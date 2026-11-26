@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's StoredSearchesTest, under its names: the search tabs kept in `StoredSearches.met` from one run to
+//! The search tabs kept in `StoredSearches.met` from one run to
 //! the next.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

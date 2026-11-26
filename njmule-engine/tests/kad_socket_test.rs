@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadSocketTest, under its names: two Kad nodes on sockets of their own talk over the loopback,
+//! Two Kad nodes on sockets of their own talk over the loopback,
 //! directly or through the UDP relay of a SOCKS proxy, and a closed socket frees its port at once.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
@@ -272,7 +272,7 @@ async fn should_leave_the_port_of_a_closed_socket_free_at_once() {
     sockets.then_the_port_was_busy_times(0);
 }
 
-// Rust's own: what the Java engine's tests reach through the engine.
+// Direct unit coverage for paths also exercised through the engine.
 
 const THEIR_USER_HASH: [u8; 16] = [0x5A; 16];
 const QUIET: Duration = Duration::from_millis(300);

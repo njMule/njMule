@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's AppDirectoriesTest, under their names: the places of a profile on each system,
+//! The places of a profile on each system,
 //! below a root or beside the executable, from an environment and a home given.
 
 #![allow(clippy::unwrap_used)]

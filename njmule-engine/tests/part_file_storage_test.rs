@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PartFileStorageTest, under its names: part/block hashing, finish move and close lifecycle.
+//! Part/block hashing, finish move and close lifecycle.
 
 #![allow(
     clippy::unwrap_used,

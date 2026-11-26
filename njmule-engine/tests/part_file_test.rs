@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's PartFileTest, under their names; those of files above 4 GiB on the disk and its
+//! ; those of files above 4 GiB on the disk and its
 //! properties over any file wait for their ports.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects, clippy::panic)]

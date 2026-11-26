@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's AtomicFilesTest, under their names: files replaced whole with a backup, read back
+//! Files replaced whole with a backup, read back
 //! from it, and held for a moment by another program. A reader rejecting a file returns an error: Rust has no runtime
 //! exceptions to turn into I/O ones.
 

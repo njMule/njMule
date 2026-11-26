@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `org.njmule.app.ProfileRemovalTest`.
+//! Tests for profile removal.
 
 #![allow(clippy::unwrap_used)]
 

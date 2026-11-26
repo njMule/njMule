@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `org.njmule.app.UpdateReportTest`.
+//! Tests for update report.
 
 use njmule_engine::api::install_kind::InstallKind;
 use njmule_engine::app::update_report::UpdateReport;

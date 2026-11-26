@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's answers in `golden/tag-codec.jsonl`, given again: every case read and written as the corpus
+//! Replays `golden/tag-codec.jsonl`: every case read and written as the corpus
 //! says (`njmule-engine/tests/golden/README.md`).
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
@@ -18,7 +18,7 @@ const MAX_COUNT: usize = 64;
 
 #[test]
 fn should_give_the_recorded_answers() {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     let mut differences = Vec::new();
     let mut cases = 0;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -33,7 +33,7 @@ fn should_give_the_recorded_answers() {
     assert!(differences.is_empty(), "{} of {cases} cases differ:\n{}", differences.len(), differences.join("\n"));
 }
 
-// What the Java engine's TagCodecCorpusTest answers for the input of `recorded`.
+// Expected answer from the golden corpus for the input of `recorded`.
 fn answered(recorded: &Value) -> Value {
     let kind = recorded["kind"].as_str().unwrap();
     let data = hex::decode(recorded["in"].as_str().unwrap()).unwrap();

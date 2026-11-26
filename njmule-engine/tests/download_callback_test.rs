@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadCallbackTest, under its names: sources that connect to us, called back or for our files,
+//! Sources that connect to us, called back or for our files,
 //! offered to the downloads as the engine does.
 
 #![allow(

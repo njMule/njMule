@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's SharedFilesBrowserResultsTest, under its names: the files a client's list gives.
+//! The files a client's list gives.
 
 #![allow(clippy::unwrap_used)]
 

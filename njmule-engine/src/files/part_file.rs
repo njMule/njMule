@@ -701,7 +701,7 @@ pub fn part_range(size: u64, part: usize) -> Range<u64> {
     start..start.saturating_add(ed2k::part_length(size, part))
 }
 
-/// The bits of a part set as Java's `BitSet.toByteArray` writes them: bit `i` in byte `i / 8`, lowest bit first.
+/// Packs a part bitmap into little-endian bit order: bit `i` in byte `i / 8`, lowest bit first.
 pub fn to_bytes(bits: &[bool]) -> Vec<u8> {
     let mut bytes = vec![0u8; bits.len().div_ceil(8)];
     for (i, _) in bits.iter().enumerate().filter(|(_, set)| **set) {

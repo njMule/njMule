@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `PublicAddressTest`: the public address secure identification binds signatures to.
+//! The public address secure identification binds signatures to.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

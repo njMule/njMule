@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's MetFilesEdgeCaseTest, under their names: corner cases of the binary files of a
-//! profile. Where the Java engine checks that only a DecodeException comes out, a panic is what fails here.
+//! Corner cases of binary profile files (`.met`), ensuring malformed inputs return errors without panicking.
 
 #![allow(
     clippy::unwrap_used,
@@ -352,7 +351,7 @@ fn should_refuse_to_write_a_public_key_of_more_than_eighty_bytes() {
     assert!(clients_met::write(&[credit]).is_err());
 }
 
-// Beyond the Java engine's examples: the tags the engine reads for later, and the ends of damaged files.
+// Additional edge cases: the tags the engine reads for later, and the ends of damaged files.
 
 #[test]
 fn should_read_every_tag_of_a_server_kept_in_server_met() {

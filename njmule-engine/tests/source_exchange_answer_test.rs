@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `SourceExchangeAnswerTest`: the sources we pass on to a client that asks for them.
+//! The sources we pass on to a client that asks for them.
 
 #![allow(
     clippy::unwrap_used,

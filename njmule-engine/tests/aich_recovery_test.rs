@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's AichRecoveryTest, under their names: recovery data made and proven, refused
+//! Recovery data made and proven, refused
 //! when changed or for another file, and which parts have it. A part is a `u32`, so no part is negative.
 
 #![allow(

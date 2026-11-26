@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ScheduleTest, under its names, and how times are read and written.
+//! , and how times are read and written.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -201,7 +201,7 @@ fn should_leave_broken_rules_out() {
 }
 
 #[test]
-fn should_read_and_write_times_as_the_java_engine_does() {
+fn should_read_and_write_schedule_times() {
     for (text, written) in [
         ("07:05", "07:05"),
         ("07:05:00", "07:05"),

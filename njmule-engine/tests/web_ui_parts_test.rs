@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's WebUiPartsTest, under its names: password hashes, sessions, settings and page building of the web
+//! Password hashes, sessions, settings and page building of the web
 //! interface.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::panic)]

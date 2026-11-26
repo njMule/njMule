@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's RequestTrackerTest, under its names: how each client program used our queue lately.
+//! How each client program used our queue lately.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 
@@ -84,7 +84,7 @@ fn should_forget_a_client_not_heard_of_within_the_window() {
     assert!(tracking.tracker.is_empty());
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[test]
 fn should_count_the_drops_for_unknown_files_by_ipv6_slash64_for_two_hours() {

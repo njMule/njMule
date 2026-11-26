@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadCompletionTest, under its names: a finished file another program holds is moved once it
+//! A finished file another program holds is moved once it
 //! is free.
 
 #![allow(

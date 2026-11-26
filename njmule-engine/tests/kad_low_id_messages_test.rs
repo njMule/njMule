@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's KadLowIdMessagesTest, under their names: buddy requests and offers, callback
+//! Buddy requests and offers, callback
 //! requests and the UDP test datagram.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]

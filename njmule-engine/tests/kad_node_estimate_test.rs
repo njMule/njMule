@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeEstimateTest, under its names: how many nodes and files the Kad network holds, as the node
+//! How many nodes and files the Kad network holds, as the node
 //! tells, made up for the firewalled nodes no one can take as a contact.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

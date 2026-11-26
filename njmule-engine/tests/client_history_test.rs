@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ClientHistoryTest, under its names: the clients met, kept in `clienthistory.json`.
+//! The clients met, kept in `clienthistory.json`.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -77,10 +77,10 @@ fn should_keep_no_address() {
     assert!(!text.contains("4662") && !text.contains("192.0.2."), "{text}");
 }
 
-// Beyond the Java engine's examples: what another engine wrote, and a damaged file.
+// Additional edge cases: pre-existing history files and damaged JSON.
 
 #[test]
-fn should_read_the_file_the_java_engine_writes() {
+fn should_read_an_existing_history_file() {
     let dir = tempfile::tempdir().unwrap();
     let written = r#"{"format":1,"clients":[{"userHash":"A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1","nick":"ann","software":"eMule","firstSeen":1790848800,"lastSeen":1790848860,"country":"it"}]}"#;
     std::fs::write(dir.path().join(client_history::FILE_NAME), written).unwrap();

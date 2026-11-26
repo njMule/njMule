@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's answers in `golden/ed2k-links.jsonl`, given again: every text parsed as the corpus says, the link
-//! in the form of the Java engine's `Canonical`, or its refusal.
+//! Replays `golden/ed2k-links.jsonl`: every link parsed into canonical JSON or rejected as recorded.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
 
@@ -13,7 +12,7 @@ const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/ed2k-lin
 
 #[test]
 fn should_give_the_recorded_answers() {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     let mut differences = Vec::new();
     let mut cases = 0;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -28,7 +27,7 @@ fn should_give_the_recorded_answers() {
     assert!(differences.is_empty(), "{} of {cases} cases differ:\n{}", differences.len(), differences.join("\n"));
 }
 
-// What the Java engine's Ed2kLinkCorpusTest answers for the text of `recorded`.
+// Expected answer from the golden corpus for the text of `recorded`.
 fn answered(recorded: &Value) -> Value {
     let mut answer = Map::new();
     answer.insert("kind".into(), recorded["kind"].clone());

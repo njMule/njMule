@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's NjMuleInfoTest, under its names: version, startup notice and bundled legal texts.
+//! Version, startup notice and bundled legal texts.
 
 use njmule_engine::api::nj_mule_info;
 

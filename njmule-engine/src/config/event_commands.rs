@@ -5,7 +5,7 @@
 //! disk runs short of space. No shell runs them: [`arguments`] splits a command line into the program and its
 //! arguments, and the placeholders of each event are filled in inside the arguments.
 
-/// Characters of a command line at most, in UTF-16 units as the Java engine counts them.
+/// Maximum length of a command line, in UTF-16 code units.
 pub const MAX_COMMAND_LINE: usize = 4096;
 
 /// What a command can run on.

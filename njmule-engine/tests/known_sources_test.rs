@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KnownSourcesTest, under its names: which sources of a download are kept for the next run.
+//! Which sources of a download are kept for the next run.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 

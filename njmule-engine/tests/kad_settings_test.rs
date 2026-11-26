@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `KadSettingsTest`: Kad reacting to nick and UDP port preference changes.
+//! Kad reacting to nick and UDP port preference changes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

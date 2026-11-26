@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EmuleImporterTest, under its names, on a synthetic eMule profile.
+//! , on a synthetic eMule profile.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -1021,7 +1021,7 @@ fn should_share_the_other_directories_when_one_is_refused() {
     assert_eq!(f.target.shared, [f.emule.shared.clone()]);
 }
 
-// Beyond the Java engine's examples: what its other tests and the interfaces check.
+// Additional edge cases: what its other tests and the interfaces check.
 
 #[test]
 fn should_take_every_value_of_the_emule_preferences() {

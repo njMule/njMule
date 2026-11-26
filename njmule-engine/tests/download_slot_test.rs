@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadSlotTest, under its names: a scripted source gives the downloads a slot, then keeps or
+//! A scripted source gives the downloads a slot, then keeps or
 //! loses it by what it sends and when, on the downloads' clock.
 
 #![allow(
@@ -315,7 +315,7 @@ async fn should_drop_a_source_whose_compressed_data_does_not_inflate_again_and_a
     slot.then_the_download_has_no_source().await;
 }
 
-// Beyond the Java engine's twins: what its engine tests reach through a whole engine.
+// Additional edge cases: what its engine tests reach through a whole engine.
 
 #[tokio::test]
 async fn should_take_a_block_sent_compressed_and_ask_for_the_next() {

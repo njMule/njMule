@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's answers in `golden/profile-files.jsonl`, given again: the files of a profile as the Java engine
-//! writes them and changed three times, each read as the Java engine reads it.
+//! Replays `golden/profile-files.jsonl`: valid and mutated profile files decoded into canonical JSON.
 
 #![allow(
     clippy::unwrap_used,
@@ -38,7 +37,7 @@ const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/profile-
 
 #[test]
 fn should_give_the_recorded_answers() {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     let mut differences = Vec::new();
     let mut cases = 0;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -53,7 +52,7 @@ fn should_give_the_recorded_answers() {
     assert!(differences.is_empty(), "{} of {cases} cases differ:\n{}", differences.len(), differences.join("\n"));
 }
 
-// What the Java engine's ProfileFilesCorpusTest answers for the input of `recorded`.
+// Expected answer from the golden corpus for the input of `recorded`.
 fn answered(recorded: &Value) -> Value {
     let kind = recorded["kind"].as_str().unwrap();
     let data = hex::decode(recorded["in"].as_str().unwrap()).unwrap();

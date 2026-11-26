@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerControlTest, under its names: refusing filtered/LAN servers and ignoring IPv6 server UDP
+//! Refusing filtered/LAN servers and ignoring IPv6 server UDP
 //! datagrams.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]

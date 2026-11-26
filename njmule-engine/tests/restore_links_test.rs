@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java RestoreLinksTest, under its names: what the uninstaller's `--restore-links` does against a pretend
+//! What the uninstaller's `--restore-links` does against a pretend
 //! registry, never touching the real one.
 
 #![allow(

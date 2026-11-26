@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EventReplayTest, under its names: what a front end that follows the events late is told first.
+//! What a front end that follows the events late is told first.
 
 #![allow(clippy::arithmetic_side_effects)]
 

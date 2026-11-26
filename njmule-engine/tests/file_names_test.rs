@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's FileNamesTest, under its names: each case of a parameterized test in turn.
+//! Each case of a parameterized test in turn.
 
 use njmule_engine::api::file_names;
 

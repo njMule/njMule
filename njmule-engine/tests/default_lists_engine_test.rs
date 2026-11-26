@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `DefaultListsEngineTest`: the shipped server list, with both networks off.
+//! The shipped server list, with both networks off.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

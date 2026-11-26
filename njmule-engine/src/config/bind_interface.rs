@@ -5,8 +5,7 @@
 //! its name or display name, or an IPv4 address of this computer. A chosen interface that is not there leaves njMule
 //! offline rather than reaching the network another way.
 //!
-//! Interfaces go by the names the system gives them: on Windows the name shown in the network settings ("Wi-Fi"), not
-//! the names the Java engine makes up (`wlan1`), so a choice made there by such a name is to be made again.
+//! Interfaces go by the names the operating system gives them (e.g. "Wi-Fi" on Windows, "eth0" on Linux).
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -108,7 +107,7 @@ pub fn is_address(choice: &str) -> bool {
     address(strip(choice)).is_some()
 }
 
-// Four parts of one to three decimal digits; a leading zero is no octal sign, as in the Java engine. The standard
+// Four parts of one to three decimal digits; a leading zero is decimal, not octal. The standard
 // library refuses leading zeros, and takes no shortened form such as 10.8.0, which nobody means as an address here.
 fn address(text: &str) -> Option<Ipv4Addr> {
     let mut octets = [0_u8; 4];

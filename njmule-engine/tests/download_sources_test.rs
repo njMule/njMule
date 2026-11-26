@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadSourcesTest, under its names: downloads talking with scripted sources on the loopback
-//! address, on a clock the test moves. Those of features not ported yet are listed in `tests/not_ported.txt`.
+//! Downloads talking with scripted sources on loopback under a test-controlled clock.
 
 #![allow(
     clippy::unwrap_used,
@@ -1328,7 +1327,7 @@ fn aich_hash(file: [u8; 16], master: [u8; 20]) -> Packet {
     Packet::written(protocol::EMULE, extended::AICHFILEHASHANS, out)
 }
 
-// The names of the packets a downloader sends a source, as the Java tests read them.
+// Human-readable names for the packets a downloader sends to a source.
 fn names(packets: &[Packet]) -> Vec<String> {
     packets
         .iter()
@@ -1771,7 +1770,7 @@ async fn should_take_no_source_by_hand_into_a_full_source_list() {
     sources.then_every_one_is_refused();
 }
 
-// Beyond the Java engine's twins: a source connected when the IP filter comes to block it is hung up on.
+// Additional edge cases: a source connected when the IP filter comes to block it is hung up on.
 #[tokio::test]
 async fn should_hang_up_on_a_connected_source_the_ip_filter_comes_to_block() {
     let mut sources = Sources::new();

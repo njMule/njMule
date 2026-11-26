@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNotesTest, under its names: the notes Kad finds on our files, on request and once a run for each
+//! The notes Kad finds on our files, on request and once a run for each
 //! download, as the comment filter lets them be shown.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

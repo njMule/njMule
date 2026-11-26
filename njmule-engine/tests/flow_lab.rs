@@ -68,7 +68,7 @@ const SLOT_DELAY: Duration = Duration::from_millis(300);
 const CONTROL_LINE: &str = "njmule-control ";
 const CHANNELS: [&str; 3] = ["tcp", "udp", "udp-obfuscated"];
 
-/// Exact port of `java.util.Random` so generated test files have the same bytes and MD4 hashes as the recorded
+/// Deterministic 48-bit LCG so generated test files have the exact same bytes and MD4 hashes as the recorded
 /// transcripts.
 pub struct JavaRandom {
     seed: u64,
@@ -112,7 +112,7 @@ pub fn demo_content(size: usize, seed: i64) -> Vec<u8> {
 }
 
 /// Deterministic 16-byte hash matching `DownloadFlowTest.hash(seed)`.
-pub fn java_hash(seed: i64) -> [u8; 16] {
+pub fn seeded_hash(seed: i64) -> [u8; 16] {
     let mut bytes = [0u8; 16];
     JavaRandom::new(seed).next_bytes(&mut bytes);
     bytes

@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! An eMule profile made up for tests: config, temp, incoming and one shared directory, as the Java engine's tests make
-//! it.
+//! Synthetic eMule profile builder for importer tests (config, temp, incoming and one shared directory).
 
 #![allow(dead_code, clippy::unwrap_used, clippy::indexing_slicing)]
 

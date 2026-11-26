@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's ServerListTest, under their names; those of the IP filter wait for its port.
+//! ; those of the IP filter wait for its port.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -364,7 +364,7 @@ fn should_neither_add_nor_offer_servers_the_filter_blocks() {
     assert_eq!(list.len(), 3, "kept in the file");
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[test]
 fn should_name_the_priorities_and_read_no_address_from_other_text() {

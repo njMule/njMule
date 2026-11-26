@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PortForwardingTest, under its names: our ports forwarded by a UPnP gateway on the loopback, for a
+//! Our ports forwarded by a UPnP gateway on the loopback, for a
 //! lease renewed at half its time, with the pinholes of its IPv6 firewall, the gateway looked for again while it is
 //! silent, and everything removed at the end.
 

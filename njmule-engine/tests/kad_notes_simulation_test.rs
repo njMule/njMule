@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNotesSimulationTest, under its names: notes travel through a network of simulated nodes, and
+//! Notes travel through a network of simulated nodes, and
 //! one node's comment reaches another's search.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

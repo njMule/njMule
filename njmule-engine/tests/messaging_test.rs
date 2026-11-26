@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's MessagingTest, under its names: the conversations with other clients. The test plays the
+//! The conversations with other clients. The test plays the
 //! network: it connects where a client listens, fails where none does, and keeps what is sent on each connection.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

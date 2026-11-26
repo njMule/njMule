@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's IpWhitelistLiveTest, under its names: live IP whitelist updates against a blocking IP filter.
+//! Live IP whitelist updates against a blocking IP filter.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 

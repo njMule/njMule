@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadManagerTest, under its names: what the user does with downloads and where their sources
-//! come from, on the downloads as the engine runs them. The sources Kad finds in the Java tests of corrupt senders come
-//! from the server here.
+//! Download manager operations and source discovery; simulated server sources stand in for Kad lookups
+//! in the corrupt-sender scenarios.
 
 #![allow(
     clippy::unwrap_used,
@@ -1246,7 +1245,7 @@ async fn should_take_a_loopback_source_by_hand_as_the_user_chose() {
     manager.then_it_is_accepted();
 }
 
-// Beyond the Java engine's twins: what its engine tests reach through a whole engine.
+// Additional edge cases: what its engine tests reach through a whole engine.
 
 #[tokio::test]
 async fn should_drop_the_sources_the_ip_filter_blocks_once_it_changes() {
@@ -1296,7 +1295,7 @@ async fn should_keep_only_usable_sources_from_kad() {
     manager.then_the_resulting_download_has_sources(1);
 }
 
-// Rust's own: Java's tests reach it with Kad's callbacks, which are not kept yet.
+// Additional coverage for Kad callback source handling.
 #[tokio::test]
 async fn should_take_a_firewalled_kad_source_only_at_its_ipv6_address_while_we_have_ipv6() {
     let mut manager = Manager::new();

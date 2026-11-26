@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's SearchRequestAutomaticTest, under its names: the network an automatic search goes to, by what is
+//! The network an automatic search goes to, by what is
 //! connected and the server connected to.
 
 use njmule_engine::api::search_request::{self, Scope};

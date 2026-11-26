@@ -335,7 +335,7 @@ fn bare_name_rating(bare: &str, marked: &str) -> u32 {
     }
 }
 
-// Lengths as the Java engine counts them, in UTF-16 units.
+// Lengths are counted in UTF-16 code units.
 fn length(text: &str) -> usize {
     text.encode_utf16().count()
 }
@@ -398,7 +398,7 @@ fn corrupt_suffix(at: OffsetDateTime) -> String {
     )
 }
 
-// An address field holds 32 bits; a wider number keeps its low ones, as the Java engine reads it.
+// An address field holds 32 bits; a wider number keeps its low 32 bits.
 fn low_bits(value: u64) -> u32 {
     u32::try_from(value & u64::from(u32::MAX)).unwrap_or_default()
 }

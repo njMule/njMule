@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeAichTest, under its names: the AICH root a node tells for a file is taken only when it is
+//! The AICH root a node tells for a file is taken only when it is
 //! the one root, given by a third of the publishers at least.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

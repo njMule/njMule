@@ -1,13 +1,10 @@
 # Golden vectors and corpora
 
 - `file-hashes.txt` and `obfuscation.txt`: vectors made by an independent Python implementation
-  (`tools/golden/`), which both engines must match.
-- `*.jsonl`: corpora, inputs of a decoder with the answers the Java engine gives them, which
-  another engine replays and must answer alike. One JSON object per line: `kind`, the input `in`
-  (hex) with what the kind needs to decode it, then the answer, or `"error":"decode"` where the
-  input is refused. The Java tests that check them (`*CorpusTest`) write them again with
-  `-Pnjmule.corpus.write=true`, keeping the inputs; a deleted file gets new ones. The Rust
-  engine replays them in `njmule-engine/tests`.
+  (`tools/golden/`), which the engine must match.
+- `*.jsonl`: regression corpora of decoder inputs paired with their expected answers, replayed by
+  `njmule-engine/tests`. One JSON object per line: `kind`, the input `in` (hex) with what the kind
+  needs to decode it, then the answer, or `"error":"decode"` where the input is refused.
 
 ## `tag-codec.jsonl`
 
@@ -24,8 +21,7 @@ in the form of `Canonical`: records as objects of their components, with an `@ty
 implement a sealed interface (tags); integers as the unsigned values of their width; floats as the
 hex of their bits; bytes, hashes and Kad ids (big-endian) in lower-case hex; a tag name as its id
 or the hex of its bytes; an inner packet as `protocol`, `opcode` and `payload`.
-The Rust engine replays every kind; a kind new to the corpus fails there until it is ported or
-named as still to port.
+The engine replays every kind in the corpus.
 
 ## `profile-files.jsonl`
 

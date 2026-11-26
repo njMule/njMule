@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The remote-control API against an engine the test controls: the examples of the Java RemoteApiTest, under their
-//! names, for the calls the Rust engine serves.
+//! Remote-control HTTP API tests against a controlled engine stand-in.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 

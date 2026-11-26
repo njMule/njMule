@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's FileCommentsTest, under its names: our ratings and comments of files in `fileinfo.ini`.
+//! Our ratings and comments of files in `fileinfo.ini`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

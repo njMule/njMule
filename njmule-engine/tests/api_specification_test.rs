@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ApiSpecificationTest, under its names: the OpenAPI document of the API matches the engine and the
+//! The OpenAPI document of the API matches the engine and the
 //! code that checks every call against it.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
@@ -139,7 +139,7 @@ fn should_refuse_a_document_with_parameters_it_cannot_check() {
 #[test]
 fn should_refuse_an_operation_without_id() {
     let mut test = Specification::new();
-    // Not a second summary, as the Java test writes: a YAML mapping holds each key once.
+    // A YAML mapping holds each key once, so a duplicate summary cannot be added.
     test.given_the_document_changed("operationId: getStatus", "description: no id");
 
     test.when_the_document_is_read();

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerSessionTest, under its names: what the session sends and takes, against a server the test
+//! What the session sends and takes, against a server the test
 //! plays packet by packet on the loopback.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

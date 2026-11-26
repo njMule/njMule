@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `DefaultListsTest`: the server list and Kad bootstrap contacts shipped with njMule.
+//! The server list and Kad bootstrap contacts shipped with njMule.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

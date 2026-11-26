@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadA4afTest, under its names: one scripted client that is a source of two downloads, asked for
+//! One scripted client that is a source of two downloads, asked for
 //! one at a time, on a clock the test moves.
 
 #![allow(

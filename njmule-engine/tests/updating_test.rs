@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java UpdatingTest, under its names: restart arguments, systemd detection and waiting for old processes.
+//! Restart arguments, systemd detection and waiting for old processes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 

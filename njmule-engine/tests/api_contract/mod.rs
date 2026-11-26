@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ApiContract: checks the answers and events of the API against the response schemas of its OpenAPI
+//! Checks the answers and events of the API against the response schemas of its OpenAPI
 //! document, strictly: every field an answer holds must be in the document, although the document itself lets clients
 //! take fields it does not name.
 

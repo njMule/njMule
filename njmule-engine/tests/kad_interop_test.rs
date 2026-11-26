@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadInteropTest, under its names: talks Kad with an eMule on this computer, bootstrap, hello,
+//! Talks Kad with an eMule on this computer, bootstrap, hello,
 //! lookup and ping, which change nothing in it, and a keyword stored in its index and searched there. Run on demand
 //! with `cargo test --test kad_interop_test -- --ignored`; the eMule's UDP port comes from `NJMULE_INTEROP_KAD_PORT`
 //! (default 14897), and the tests stop early when no eMule answers there.

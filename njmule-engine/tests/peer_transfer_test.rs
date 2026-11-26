@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `PeerTransferTest`: two Rust engines exchanging files over IPv4 and IPv6 with SecureIdent credits,
+//! Two Rust engines exchanging files over IPv4 and IPv6 with SecureIdent credits,
 //! shared-file browsing visibility, and file comments.
 
 #![allow(

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The `--hash` examples of the Java launcher's MainTest, under their names, against the executable.
+//! End-to-end checks for the `--hash` CLI option against the compiled `njmule` executable.
 
 #![allow(clippy::unwrap_used)]
 

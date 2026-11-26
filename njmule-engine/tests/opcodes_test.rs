@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's OpcodesTest, under their names: opcode tables and frame limits.
+//! Opcode tables and frame limits.
 
 use njmule_engine::protocol::packet::frame_limits::{
     self, CLIENT_MAX, DATA_MAX, HANDSHAKE_MAX, HASHSET_MAX, SHARED_FILES_MAX,

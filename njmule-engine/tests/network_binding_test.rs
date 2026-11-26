@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The engine on the network interface of its preferences: offline while it is gone, on the network again once the
-//! interface is looked at anew. Beyond the Java engine's examples, which play the network's binding in its own test.
+//! Engine network interface binding: stays offline while the configured interface is absent and reconnects once it returns.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 

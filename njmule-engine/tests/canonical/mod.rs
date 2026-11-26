@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Decoded values as the JSON the corpora keep (the Java engine's `Canonical`): structs as objects of their fields in
+//! Decoded values as canonical JSON for the golden corpora: structs as objects of their fields in
 //! lowerCamelCase, with an `@type` for the cases of a sealed type, integers as the unsigned values of their width,
 //! floats as the hex of their bits, bytes and hashes in lower-case hex, an absent value as null.
 

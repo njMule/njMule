@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A source a test scripts, as the Java engine's download tests have it: it listens on the loopback address, answers a
+//! A scripted loopback peer source for download tests: it listens on the loopback address, answers a
 //! downloader's hello with its own and then says what the test makes it say, reading what the downloader asks.
 
 #![allow(

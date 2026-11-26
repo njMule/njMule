@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Ed2kMessagesTest, under their names: login, id, status, identity, search
+//! Login, id, status, identity, search
 //! results, server lists, sources, the version tag and the hello. Its global search requests come with `search`.
 
 #![allow(

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's SourceExchangeTest, under their names: answers of every version and the
+//! Answers of every version and the
 //! extended form, and requests.
 
 #![allow(

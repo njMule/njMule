@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerSourceRequestsTest, under its names: twenty downloads asking a server for their sources, on a
+//! Twenty downloads asking a server for their sources, on a
 //! clock the test moves.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects)]

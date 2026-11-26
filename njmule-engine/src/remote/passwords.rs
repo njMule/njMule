@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Password hashes for the web interface: PBKDF2 with HMAC-SHA-512, a random salt and many rounds, written as
-//! `pbkdf2-sha512$<rounds>$<salt>$<hash>` in base64 without padding, as the Java engine writes them.
+//! `pbkdf2-sha512$<rounds>$<salt>$<hash>` in unpadded base64.
 
 use data_encoding::BASE64_NOPAD;
 use rand::Rng;
@@ -44,7 +44,7 @@ pub fn matches(password: &str, stored: &str) -> bool {
     if *scheme != SCHEME || rounds == 0 || rounds > MAX_ROUNDS {
         return false;
     }
-    // Padding is optional, as for the Java engine's decoder.
+    // Accept both padded and unpadded base64.
     let (Ok(salt), Ok(expected)) = (decode(salt), decode(expected)) else {
         return false;
     };

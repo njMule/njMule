@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's AichVotesTest, under their names: a master hash trusted by enough networks.
+//! A master hash trusted by enough networks.
 
 #![allow(
     clippy::unwrap_used,

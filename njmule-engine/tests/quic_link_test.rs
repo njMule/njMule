@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's QuicLinkTest, under its names: two clients whose QUIC datagrams cross a wire of frames.
+//! Two clients whose QUIC datagrams cross a wire of frames.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -84,7 +84,7 @@ async fn should_time_out_a_read_that_waits_too_long_and_stay_open() {
     test.then_bytes_cross_from_the_near_side_to_the_far_side("later").await;
 }
 
-// The books NAT traversal keeps of the connections, which the Java test leaves to NatTraversalTest.
+// NAT traversal connection bookkeeping checks.
 #[tokio::test]
 async fn should_list_a_connection_on_both_sides_while_it_is_open() {
     let mut test = Wire::new();

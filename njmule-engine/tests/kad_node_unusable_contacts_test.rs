@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeUnusableContactsTest, under its names: what the node leaves alone, from a plain packet of
+//! What the node leaves alone, from a plain packet of
 //! the DNS port to contacts it cannot ask, and an availability no file has.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

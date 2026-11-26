@@ -8,7 +8,7 @@ use super::StringEncoding;
 
 const BOM: [u8; 3] = [0xEF, 0xBB, 0xBF];
 
-// Windows-1252's 0x80..=0x9F as the Java engine decodes them: its five undefined bytes become U+FFFD. WHATWG's table,
+// Strict Windows-1252 decoding for 0x80..=0x9F: the five undefined bytes become U+FFFD. WHATWG's table,
 // which encoding_rs follows, keeps them as C1 controls instead, so it would not answer the corpora alike.
 const WINDOWS_1252_80_9F: [char; 32] = [
     '\u{20AC}', '\u{FFFD}', '\u{201A}', '\u{0192}', '\u{201E}', '\u{2026}', '\u{2020}', '\u{2021}', '\u{02C6}',

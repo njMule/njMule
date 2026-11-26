@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's WebUiApiTest, under its names: the remote-control API as the web interface serves it next to its
+//! The remote-control API as the web interface serves it next to its
 //! pages, for the holders of the API token.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

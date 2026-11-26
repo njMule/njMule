@@ -9,7 +9,7 @@ use crate::protocol::packet::opcodes::{client, extended};
 use crate::protocol::packet::{Packet, protocol};
 use crate::protocol::tag::tag_codec::read_ed2k_list;
 
-/// UTF-16 units a message has at most, as the Java engine counts its characters; longer ones are cut.
+/// Maximum length of a chat message in UTF-16 code units; longer messages are cut.
 pub const MAX_LENGTH: usize = 450;
 /// CAPTCHA status: solved.
 pub const SOLVED: u8 = 0;

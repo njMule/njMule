@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Parsing and escaping shared by the link types. Links come from users, browsers and sites, so every part is checked
-//! before it is taken; the same text gives the same link as the Java engine gives (the `ed2k-links.jsonl` corpus).
+//! before it is taken; checked against the `ed2k-links.jsonl` regression corpus.
 
 use std::net::Ipv6Addr;
 
@@ -321,7 +321,7 @@ pub fn encode(text: &str) -> String {
     utf8_percent_encode(text, LINK_TEXT).to_string()
 }
 
-// The case-insensitive comparison the Java engine makes, one character to one: the Kelvin sign is a 'k'.
+// One-to-one Unicode case-insensitive comparison: the Kelvin sign folds to 'k'.
 fn equals_ignoring_case(text: &str, expected: &str) -> bool {
     text.chars().count() == expected.chars().count() && starts_ignoring_case(text, expected)
 }

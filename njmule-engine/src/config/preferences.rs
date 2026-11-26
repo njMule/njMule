@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The engine's preferences, with the Java engine's defaults and checks. The fields are open to change; only
+//! The engine's preferences, defaults and validation rules. The fields are open to change; only
 //! [`Preferences::validated`] ones are used, as the preferences file and the API give them.
 
 use std::path::{Path, PathBuf};
@@ -21,7 +21,7 @@ use crate::config::update_mode::UpdateMode;
 use crate::security::ip_whitelist;
 use crate::util::white_space::strip;
 
-// Lengths are in UTF-16 units, as the Java engine counts them.
+// Lengths are counted in UTF-16 code units.
 pub const MAX_NICK_LENGTH: usize = 50;
 pub const MAX_RATE_KIBPS: u32 = 10_000_000;
 pub const MAX_CONNECTIONS: u32 = 10_000;

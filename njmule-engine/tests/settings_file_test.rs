@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's SettingsFileTest, under its names, and the password hashes: the web interface's settings as the
+//! , and the password hashes: the web interface's settings as the
 //! API changes them in their file.
 
 #![allow(clippy::unwrap_used, clippy::panic)]
@@ -71,10 +71,10 @@ fn should_refuse_a_guest_password_that_is_the_admins() {
 }
 
 #[test]
-fn should_match_a_hash_of_the_java_engine() {
+fn should_match_a_known_pbkdf2_hash() {
     let mut test = Settings::new();
 
-    // PBKDF2-HMAC-SHA512 of "long enough" with the salt "saltsaltsaltsalt" and 2 rounds, as the Java engine writes it.
+    // PBKDF2-HMAC-SHA512 of "long enough" with the salt "saltsaltsaltsalt" and 2 rounds.
     test.when_the_password_is_checked(
         PASSWORD,
         "pbkdf2-sha512$2$c2FsdHNhbHRzYWx0c2FsdA$VMCDs8b494TpZYj59cDgL23mVKJNiEQ5u2q1ftKnWom6pwiQuGzgWGwYPu5+PwHIVZuA+ciaQ4CdjPUK4gV41A",

@@ -61,7 +61,7 @@ export function known(key: string): boolean {
     return key in chosen.value || key in english.value;
 }
 
-/** Fills in Java's %s, %d, %.1f, %1$s and %% placeholders, which the texts use. */
+/** Fills in `%s`, `%d`, `%.1f`, `%1$s` and `%%` printf-style placeholders, which the texts use. */
 export function format(pattern: string, args: unknown[]): string {
     let next = 0;
     return pattern.replace(/%(?:(\d+)\$)?(\.\d+)?([sdfcx%])/g, (whole, position, precision, kind) => {

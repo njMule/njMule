@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ChatFilterTest, under its names: which incoming chat messages show.
+//! Which incoming chat messages show.
 
 use njmule_engine::social::chat_filter::{self, ChatFilter, State};
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's LookupResponseTimeTest, under its names: a lookup waits for silent nodes as long as nodes have
+//! A lookup waits for silent nodes as long as nodes have
 //! lately taken to answer, three seconds at most, and times the answers of the nodes it asked.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

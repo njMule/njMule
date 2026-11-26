@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The example of the Java engine's GoldenFileHashTest, under its name: the vectors of the independent implementation
-//! in `tools/golden/`.
+//! Verifies eD2K and AICH hashing against the independent golden vectors in `tools/golden/`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 

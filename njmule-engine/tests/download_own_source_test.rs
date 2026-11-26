@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadOwnSourceTest, under its names: the downloads take no source that is ourselves, from the
+//! The downloads take no source that is ourselves, from the
 //! server, Kad or another client.
 
 #![allow(

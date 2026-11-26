@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Golden vectors for the eD2K and AICH hashes, from a second, independent implementation.
 
-The code is written from the eD2K and AICH algorithms independently of the njMule Java code, with
+The code is written from the eD2K and AICH algorithms independently of the njMule engine, with
 an explicit hash tree instead of recursion and MD4 from RFC 1320 (Python's hashlib has no MD4). Pure Python is slow: generating takes about a minute.
 
 Usage: python tools/golden/gen_vectors.py > njmule-engine/tests/golden/file-hashes.txt
@@ -21,7 +21,7 @@ SIZES = [1, 1000, EMBLOCKSIZE, EMBLOCKSIZE + 1, PARTSIZE - 1, PARTSIZE, PARTSIZE
 
 
 def content(size):
-    """Deterministic test data: byte i is (7 * i + i // 251) mod 256 (the Java test agrees)."""
+    """Deterministic test data: byte i is (7 * i + i // 251) mod 256."""
     return bytes((7 * i + i // 251) & 0xFF for i in range(size))
 
 

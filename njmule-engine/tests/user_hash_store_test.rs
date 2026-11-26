@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's UserHashStoreTest, under their names: the hash peers know kept through backups and
+//! The hash peers know kept through backups and
 //! files another program holds.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]

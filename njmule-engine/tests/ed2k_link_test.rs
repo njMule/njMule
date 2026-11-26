@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Ed2kLinkTest, under their names: file, server, list, search and magnet links,
+//! File, server, list, search and magnet links,
 //! their optional parts and their bounds.
 
 #![allow(

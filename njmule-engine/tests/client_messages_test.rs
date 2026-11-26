@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's ClientMessagesTest, under their names: file status, part requests, data and
+//! File status, part requests, data and
 //! compressed chunks, file names, hash sets and queue ranks.
 
 #![allow(

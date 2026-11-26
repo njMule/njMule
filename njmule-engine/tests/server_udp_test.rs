@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerUdpTest, under its names: the socket for server queries, straight, through the relay of a
+//! The socket for server queries, straight, through the relay of a
 //! SOCKS5 proxy, or held.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -112,7 +112,7 @@ async fn should_send_nothing_while_the_route_is_held() {
     assert_eq!(server.asked().await, None, "the server heard nothing");
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[tokio::test]
 async fn should_ask_a_server_obfuscated_with_its_key_and_read_its_obfuscated_answer() {

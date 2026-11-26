@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's MutatedMessagesTest, under their names: messages of the network made right, then
-//! changed as a broken or hostile peer or server could change them, are only refused, never a panic. The messages made
-//! right are those of `golden/packets.jsonl`, which the Java engine's encoders wrote, each read by its decoder.
+//! Mutated network messages derived from `golden/packets.jsonl`: broken or hostile payloads must be
+//! decoded safely or rejected without panicking.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -28,7 +27,7 @@ struct Sample {
 
 // The messages the corpus has made right: those its decoder reads.
 fn samples() -> Vec<Sample> {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     text.lines()
         .filter(|line| !line.trim().is_empty())
         .filter_map(|line| {

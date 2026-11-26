@@ -818,7 +818,7 @@ fn to_level(value: &str) -> Result<String, UsageError> {
     Ok(level)
 }
 
-// Resolves `.` and `..` lexically, matching Java's Path.normalize().
+// Resolves `.` and `..` lexically without touching the filesystem.
 fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for component in path.components() {

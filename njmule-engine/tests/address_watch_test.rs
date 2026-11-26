@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `AddressWatchTest`: a change of our public IPv4 address as the server and Kad see it.
+//! A change of our public IPv4 address as the server and Kad see it.
 
 use njmule_engine::engine::address_watch::{AddressWatch, Reaction};
 

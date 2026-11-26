@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `LiveSettingsTest`: changing TCP port and Kad enablement without restarting.
+//! Changing TCP port and Kad enablement without restarting.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

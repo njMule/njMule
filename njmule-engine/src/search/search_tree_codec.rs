@@ -18,7 +18,7 @@ const UINT64: u8 = 8;
 
 const MAX_NODES: usize = 256;
 const MAX_DEPTH: usize = 64;
-// Values the Java engine holds in a signed long: a larger one is out of range.
+// Numeric operands stay within signed 64-bit range; larger values are rejected.
 const MAX_VALUE: u64 = i64::MAX.unsigned_abs();
 
 /// The tree to send: an expression made only of ANDed keywords becomes one keyword with the words joined by spaces,

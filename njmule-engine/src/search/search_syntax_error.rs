@@ -23,7 +23,7 @@ pub enum Reason {
 }
 
 impl Reason {
-    /// The name front ends and the Java engine know the reason by.
+    /// The canonical code name of the syntax error reason.
     pub fn name(self) -> &'static str {
         match self {
             Reason::General => "GENERAL",

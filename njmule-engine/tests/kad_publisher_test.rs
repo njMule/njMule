@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadPublisherTest, under its names: the keywords of our complete files and ourselves as a source
+//! The keywords of our complete files and ourselves as a source
 //! of every shared file, published in turn and again after their intervals, by a node that may.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

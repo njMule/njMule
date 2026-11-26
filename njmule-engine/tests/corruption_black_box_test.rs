@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's CorruptionBlackBoxTest, under its names: which sources sent the corrupt data of a download.
+//! Which sources sent the corrupt data of a download.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::single_range_in_vec_init)]
 

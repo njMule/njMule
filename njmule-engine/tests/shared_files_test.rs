@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's SharedFilesTest: shared folders and trees, private folders, scans, renames,
+//! Shared folders and trees, private folders, scans, renames,
 //! priorities, counts, AICH trees and other clients' records. The disk is read and hashed here as the network does it
 //! off its task, one step after the other.
 

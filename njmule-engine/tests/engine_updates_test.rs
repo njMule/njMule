@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EngineUpdatesTest, under its names: the engine's side of the updates, with the checks off as in
+//! The engine's side of the updates, with the checks off as in
 //! every test so nothing reaches GitHub, plus the `--apply-update` entry point of the executable.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

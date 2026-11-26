@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's FileKindTest, under its names: the kind of a file from its extension as exposed by the API.
+//! The kind of a file from its extension as exposed by the API.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's PathSanitizerTest, under their names; its properties over any name are left to
+//! ; its properties over any name are left to
 //! the examples.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -143,7 +143,7 @@ fn should_pick_the_number_after_the_reserved_names_of_a_long_name() {
     }
 }
 
-// Beyond the Java engine's examples.
+// Additional edge cases.
 
 #[test]
 fn should_number_a_name_after_an_extension_too_long_to_be_one() {

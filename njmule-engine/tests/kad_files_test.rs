@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's KadFilesTest, under their names: Kad ids on the wire, `nodes.dat` and
+//! Kad ids on the wire, `nodes.dat` and
 //! `preferencesKad.dat`, and the bit arithmetic of ids.
 
 #![allow(

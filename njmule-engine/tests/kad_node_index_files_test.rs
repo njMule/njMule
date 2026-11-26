@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeIndexFilesTest, under its names: what other nodes published to us outlives a restart, as
+//! What other nodes published to us outlives a restart, as
 //! long as it would have lived anyway and within the limits a live publish meets.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

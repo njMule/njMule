@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeBootstrapTest, under its names: how a node starts, from a bootstrap list asked one contact
+//! How a node starts, from a bootstrap list asked one contact
 //! at a time, from saved and shipped contacts, and from clients met over eD2K.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

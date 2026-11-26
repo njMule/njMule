@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PortCheckTest, under its names: a test of our ports, the router first, then the server and Kad.
+//! A test of our ports, the router first, then the server and Kad.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's CorruptPartTest, under its names: what becomes of a part that fails its check.
+//! What becomes of a part that fails its check.
 
 #![allow(
     clippy::unwrap_used,
@@ -133,7 +133,7 @@ impl CorruptPart {
         assert_eq!(told, format!("guilty [{ip}]"));
     }
 
-    // The next event the Java test's listener tells: added and progress it does not.
+    // The next event observed by the test listener (added and progress are ignored).
     fn next_told(&mut self) -> String {
         let deadline = Instant::now() + WAIT;
         loop {

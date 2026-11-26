@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Kad in the engine: it runs on the UDP port of the preferences, waits while another program holds that port, stops by
-//! hand or when turned off, and moves to a new port. Beyond the Java engine's examples, which read Kad's port in the
-//! engine's status.
+//! Kad lifecycle inside the engine: UDP port binding, port conflict retries, manual stop and port changes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 

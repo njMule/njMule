@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's CreditsTest, under its names: what each client gave and got, its place in our queue, and
+//! What each client gave and got, its place in our queue, and
 //! `clients.met`, which keeps them.
 
 #![allow(clippy::unwrap_used, clippy::float_cmp, clippy::cast_precision_loss)]

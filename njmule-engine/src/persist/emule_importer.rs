@@ -1046,7 +1046,7 @@ fn canonical(path: &Path) -> PathBuf {
         .unwrap_or(absolute)
 }
 
-// Cut to at most `max` UTF-16 units, as the Java engine counts them, never inside a character.
+// Cut to at most `max` UTF-16 code units, never inside a character.
 fn shortened(text: &str, max: usize) -> &str {
     let mut units = 0_usize;
     let end = text

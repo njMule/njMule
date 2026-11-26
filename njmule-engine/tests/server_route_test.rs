@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerRouteTest, under its names: how a server is asked over UDP, obfuscated or plain.
+//! How a server is asked over UDP, obfuscated or plain.
 
 #![allow(clippy::unwrap_used)]
 

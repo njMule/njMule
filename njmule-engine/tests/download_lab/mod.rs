@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The downloads as the engine runs them, for the Java engine's download tests: a manager on a loop of its own that
+//! Download harness for integration tests: a manager on a loop of its own that
 //! connects where it asks to, hands it the links, their hellos and packets, the disk work and a tick every 100 ms, on a
 //! clock the tests move. The server is a stand-in that records what it is asked.
 
@@ -409,7 +409,7 @@ impl Downloads {
         self.serving = Some(serving);
     }
 
-    /// Settings as most Java tests give them: obfuscation supported, 100 sources a file, LAN sources left out.
+    /// Default test settings: obfuscation supported, 100 sources per file, LAN sources filtered.
     pub fn settings() -> Settings {
         Settings {
             obfuscation: ObfuscationMode::Supported,

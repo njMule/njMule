@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Ed2kStringsTest, under their names, and the Windows-1252 bytes the corpora may
+//! , and the Windows-1252 bytes the corpora may
 //! not hold.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
@@ -53,7 +53,7 @@ fn should_decode_malformed_utf8_as_windows1252() {
     }
 }
 
-// As the Java engine decodes them: its windows-1252 makes U+FFFD of the five bytes the code page leaves undefined.
+// Strict Windows-1252 decoding: the five undefined bytes map to U+FFFD.
 #[test]
 fn should_decode_the_bytes_windows1252_leaves_undefined_as_the_replacement_character() {
     for byte in ["81", "8d", "8f", "90", "9d"] {
@@ -111,7 +111,7 @@ proptest::proptest! {
         let text = decode(&raw);
 
         let body = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(&raw);
-        // The bytes windows-1252 leaves undefined are the replacement character, as a Java decoder gives them.
+        // The five undefined Windows-1252 bytes decode to the Unicode replacement character.
         let expected = std::str::from_utf8(body).map(str::to_owned).unwrap_or_else(|_| {
             encoding_rs::WINDOWS_1252
                 .decode_without_bom_handling(body)
