@@ -23,7 +23,6 @@ pub mod switches;
 pub mod totals;
 
 use std::collections::BTreeMap;
-use std::fs;
 use std::io;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use std::path::PathBuf;
@@ -358,8 +357,8 @@ impl Engine {
         let created = !preferences_file.exists();
         let preferences = preferences_codec::load(&preferences_file)?;
         // Where the downloads go, complete and in parts, which need not be the default folders.
-        fs::create_dir_all(preferences.effective_incoming_dir(&dirs))?;
-        fs::create_dir_all(preferences.effective_temp_dir(&dirs))?;
+        tokio::fs::create_dir_all(preferences.effective_incoming_dir(&dirs)).await?;
+        tokio::fs::create_dir_all(preferences.effective_temp_dir(&dirs)).await?;
         // Before a version that did not run here yet changes anything: the configuration as the last one left it.
         if updates::starting(&dirs.config) && preferences.backup_copies > 0 {
             back_up(&dirs, preferences.backup_copies);

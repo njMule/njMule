@@ -131,19 +131,20 @@ export function keepLanguage(tag: string): void {
  * the best of ours for the system's.
  */
 export function windowLanguage(wanted: readonly string[]): string {
-    const ours: readonly string[] = LANGUAGES;
-    const asked = new URLSearchParams(window.location.search).get('lang');
+    const raw = new URLSearchParams(window.location.search).get('lang');
+    const asked = raw === null ? undefined : LANGUAGES.find((code) => code === raw);
     try {
-        if (asked !== null && ours.includes(asked)) {
+        if (asked !== undefined) {
             localStorage.setItem(LANGUAGE_KEY, asked);
         }
-        const kept = localStorage.getItem(LANGUAGE_KEY);
-        if (kept !== null && ours.includes(kept)) {
+        const stored = localStorage.getItem(LANGUAGE_KEY);
+        const kept = stored === null ? undefined : LANGUAGES.find((code) => code === stored);
+        if (kept !== undefined) {
             return kept;
         }
     } catch {
         // No storage: the address or the system decides.
-        if (asked !== null && ours.includes(asked)) {
+        if (asked !== undefined) {
             return asked;
         }
     }
@@ -151,7 +152,11 @@ export function windowLanguage(wanted: readonly string[]): string {
 }
 
 async function texts(tag: string): Promise<Record<string, string>> {
-    const answer = await fetch(`i18n/${tag}.json`);
+    const safe = LANGUAGES.find((code) => code === tag);
+    if (safe === undefined) {
+        return {};
+    }
+    const answer = await fetch(`i18n/${safe}.json`);
     return answer.ok ? ((await answer.json()) as Record<string, string>) : {};
 }
 

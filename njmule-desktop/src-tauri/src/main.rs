@@ -1056,10 +1056,14 @@ async fn sound(path: String) -> Result<Response, String> {
     if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("wav") || e.eq_ignore_ascii_case("mp3")) {
         return Err(format!("{} is not a WAV or MP3 file", path.display()));
     }
-    if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > MAX_SOUND {
-        return Err(format!("{} is larger than {MAX_SOUND} bytes", path.display()));
-    }
-    std::fs::read(&path).map(Response::new).map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        if std::fs::metadata(&path).map_err(|e| e.to_string())?.len() > MAX_SOUND {
+            return Err(format!("{} is larger than {MAX_SOUND} bytes", path.display()));
+        }
+        std::fs::read(&path).map(Response::new).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The window listens: closing it asks whether to quit from now on.

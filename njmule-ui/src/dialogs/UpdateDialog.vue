@@ -161,6 +161,7 @@ function escape(e: KeyboardEvent): void {
                         v-if="view.notes"
                         id="update-notes"
                         class="update-notes"
+                        :aria-label="t('nj.update.title')"
                         :value="view.notes"
                         rows="10"
                         readonly
