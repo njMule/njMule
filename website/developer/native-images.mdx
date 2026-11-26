@@ -21,34 +21,34 @@ binary:
 <TabItem value="windows" label="Windows" default>
 
 ```powershell
-.\gradlew.bat :njmule-ui:compress
+cargo xtask ui-compress
 cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
 ```
 
-Requires [rustup](https://rustup.rs/) and the Visual Studio 2022 Build Tools (C++ workload). The
-executable lands in `njmule-engine/target/release/njmule.exe`.
+Requires [rustup](https://rustup.rs/), Node.js 24 and the Visual Studio 2022 Build Tools (C++
+workload). The executable lands in `njmule-engine/target/release/njmule.exe`.
 
 </TabItem>
 <TabItem value="macos" label="macOS">
 
 ```bash
-./gradlew :njmule-ui:compress
+cargo xtask ui-compress
 cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
 ```
 
-Requires `rustup` and the Xcode command line tools (`xcode-select --install`). The executable lands
-in `njmule-engine/target/release/njmule`.
+Requires `rustup`, Node.js 24 and the Xcode command line tools (`xcode-select --install`). The
+executable lands in `njmule-engine/target/release/njmule`.
 
 </TabItem>
 <TabItem value="linux" label="Linux">
 
 ```bash
-./gradlew :njmule-ui:compress
+cargo xtask ui-compress
 cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
 ```
 
-Requires `rustup` and a C toolchain (`build-essential` on Debian/Ubuntu). The executable lands in
-`njmule-engine/target/release/njmule`.
+Requires `rustup`, Node.js 24 and a C toolchain (`build-essential` on Debian/Ubuntu). The executable
+lands in `njmule-engine/target/release/njmule`.
 
 </TabItem>
 </Tabs>
@@ -72,7 +72,7 @@ glibc (such as Synology DSM) or musl-based systems (such as Alpine):
 ```bash
 sudo apt-get install -y musl-tools
 rustup target add x86_64-unknown-linux-musl
-./gradlew :njmule-ui:compress
+cargo xtask ui-compress
 CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
     --locked --release --target x86_64-unknown-linux-musl --bin njmule
 ```
@@ -89,7 +89,7 @@ ldd njmule-engine/target/x86_64-unknown-linux-musl/release/njmule
 On Windows a small C program, compiled with the Visual C++ tools, accompanies `njmule.exe`:
 
 ```powershell
-.\gradlew.bat nativeService
+cargo xtask native-service
 ```
 
 It compiles `packaging/windows/service.c` into `build/windows/njmule-service.exe`: the Windows

@@ -4,8 +4,8 @@
 #
 # Builds the Synology DSM 7 package (.spk) around a static Linux executable of the headless
 # engine. Run on Linux (or in a Linux container), so that the archives keep the scripts' modes.
-# DSM versions are numbers only: the version of gradle.properties without its pre-release, then
-# a build number that grows with each package (SPK_BUILD, by default the number of commits).
+# DSM versions are numbers only: the version in VERSION without its pre-release, then a build
+# number that grows with each package (SPK_BUILD, by default the number of commits).
 #
 # Usage: packaging/synology/build-spk.sh <njmule executable> <x86_64|armv8> [<output dir>]
 set -euo pipefail
@@ -20,7 +20,7 @@ case "$arch" in
     *) echo "unknown arch $arch: x86_64 or armv8" >&2; exit 2 ;;
 esac
 
-semver=$(sed -n 's/^version=//p' "$root/gradle.properties")
+semver=$(tr -d '\r\n' < "$root/VERSION")
 build=${SPK_BUILD:-$(git -C "$root" rev-list --count HEAD)}
 version="${semver%%-*}-$build"
 

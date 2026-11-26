@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The interface built by njmule-ui, which the web interface serves: its page, whose session token is filled in for
-//! each session, and its files. A release build carries the interface Gradle ships (`njmule-ui/build/shipped`); a
+//! each session, and its files. A release build carries the interface `cargo xtask ui` ships (`njmule-ui/build/shipped`); a
 //! build without it serves an empty page.
 
 use std::borrow::Cow;
@@ -81,7 +81,7 @@ impl WebApp {
         Self::of(Source::Shipped)
     }
 
-    /// The interface in `folder`, laid out as Gradle ships it.
+    /// The interface in `folder`, laid out as `cargo xtask ui` ships it.
     pub fn from_folder(folder: PathBuf) -> Self {
         Self::of(Source::Folder(folder))
     }

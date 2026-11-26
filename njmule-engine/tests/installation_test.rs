@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's InstallationTest, under its names. The Java engine runs on the JVM without an executable of its
-//! own; the Rust engine is always one, so "on the JVM" is a copy whose executable is not known.
+//! Resolution of the installation kind, platform and update root from the executable path and marker file.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -79,7 +78,7 @@ fn should_replace_the_whole_bundle_of_the_mac_app() {
 }
 
 #[test]
-fn should_replace_nothing_on_the_jvm() {
+fn should_replace_nothing_when_the_executable_is_unknown() {
     let mut test = Resolving::new();
 
     test.when_resolved_on(OsFamily::Windows, "amd64");

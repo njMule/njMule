@@ -9,16 +9,15 @@ describe('the version details copied from About', () => {
     let info: Schemas['ApiInfo'];
     let copied: string;
 
-    it('should name njMule, Java and the system the engine runs on', () => {
+    it('should name njMule and the system the engine runs on', () => {
         givenTheEngine({
             name: 'njMule',
             version: '0.1.2',
             api: 1,
-            java: '25.0.1',
             system: { name: 'Windows 11', version: '10.0', arch: 'amd64' },
         });
         whenTheDetailsAreCopied();
-        thenTheyAre('njMule 0.1.2 · Java 25.0.1 · Windows 11 10.0 amd64');
+        thenTheyAre('njMule 0.1.2 · Windows 11 10.0 amd64');
     });
 
     it('should name only njMule to a guest, who is told nothing of the computer', () => {

@@ -324,7 +324,7 @@ fn should_let_only_the_installed_desktop_program_take_links() {
     let programs = [
         (PathBuf::from("njMule").join("njmule-gui.exe"), true),
         (PathBuf::from("usr").join("bin").join("njmule-gui"), true),
-        (PathBuf::from("jdk").join("bin").join("java.exe"), false),
+        (PathBuf::from("tools").join("bin").join("other.exe"), false),
     ];
     for (program, expected) in programs {
         let mut test = Scenario::new();
@@ -336,7 +336,7 @@ fn should_let_only_the_installed_desktop_program_take_links() {
 }
 
 #[test]
-fn should_associate_nothing_on_the_java_launcher_as_a_development_build_runs() {
+fn should_associate_nothing_in_a_development_build() {
     let mut test = Scenario::new();
 
     test.when_the_association_of_this_system_is_looked_for();
@@ -348,7 +348,7 @@ fn should_associate_nothing_on_the_java_launcher_as_a_development_build_runs() {
 fn should_associate_no_other_program_on_windows() {
     let mut test = Scenario::new();
 
-    test.when_the_association_is_looked_for(PathBuf::from("bin").join("java"), "Windows 11");
+    test.when_the_association_is_looked_for(PathBuf::from("bin").join("other"), "Windows 11");
 
     test.then_there_is_no_association();
 }

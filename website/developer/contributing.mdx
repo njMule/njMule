@@ -32,8 +32,9 @@ of its commits with their `Signed-off-by` lines; the merged branch is deleted. S
 
 1. Start a branch `<type>/<description>` from the latest `main`
    ([Releases](releases.mdx#commits-and-branches) names the types).
-2. Make `./gradlew build` pass locally; add a line to `[Unreleased]` in `CHANGELOG.md` for a change
-   users will notice, and update its page of this documentation.
+2. Make `cargo xtask ui` and `cargo test --manifest-path njmule-engine/Cargo.toml --locked` pass
+   locally; add a line to `[Unreleased]` in `CHANGELOG.md` for a change users will notice, and
+   update its page of this documentation.
 3. Open the pull request with a Conventional Commits title and the template below; it is merged
    once its checks pass.
 

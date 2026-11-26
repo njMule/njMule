@@ -18,12 +18,9 @@ export function showAbout(): void {
     aboutOpen.value = true;
 }
 
-/** What a report of a problem needs: the engine's njMule, Java and system, those it tells. */
+/** What a report of a problem needs: the engine's njMule version and system, those it tells. */
 export function versions(info: Schemas['ApiInfo']): string {
     const parts = [`${info.name} ${info.version}`];
-    if (info.java) {
-        parts.push(`Java ${info.java}`);
-    }
     if (info.system) {
         parts.push(`${info.system.name} ${info.system.version} ${info.system.arch}`);
     }

@@ -9,8 +9,8 @@ import { defineConfig } from 'vitest/config';
 
 const build = (path: string) => fileURLToPath(new URL(`./build/${path}`, import.meta.url));
 
-// In development the translations and the flags come from what the build made of the desktop app's
-// (./gradlew :njmule-ui:translations :njmule-ui:flags), unless a web interface serves them (NJMULE_WEB).
+// In development the translations and the flags come from what the build made
+// (npm run translations && npm run flags), unless a web interface serves them (NJMULE_WEB).
 function builtFiles(): Plugin {
     const roots: Record<string, [string, string]> = {
         '/i18n/': [build('translations/i18n/'), 'application/json'],

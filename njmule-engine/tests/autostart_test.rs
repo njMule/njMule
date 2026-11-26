@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java AutostartTest, under its names: the start at login against a pretend registry and temp folders, never
-//! touching the real system.
+//! Start-at-login integration against a pretend registry and temp folders, never touching the real system.
 
 #![allow(
     clippy::unwrap_used,
@@ -24,9 +23,9 @@ const BOM: char = '\u{FEFF}';
 const WINDOWS_PROGRAM: &str = r"C:\Program Files\njMule\njmule-gui.exe";
 
 #[test]
-fn should_offer_nothing_to_a_java_launcher() {
+fn should_offer_nothing_to_another_program() {
     let mut test = Scenario::new();
-    test.given_the_program(r"C:\jdk\bin\java.exe");
+    test.given_the_program(r"C:\tools\bin\other.exe");
 
     test.when_the_start_at_login_is_looked_for();
 

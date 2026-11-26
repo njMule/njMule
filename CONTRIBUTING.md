@@ -36,12 +36,11 @@ LGPL, GPL-2.0-or-later, …), keep their original notices, and record them in `R
 4. Run the checks for what you changed:
    - Engine (`njmule-engine/`): `cargo fmt --check`, `cargo clippy --locked --all-targets -- -D warnings`,
      `cargo test --locked`, `cargo deny check`.
-   - Interface: `./gradlew :njmule-ui:build` (API types, `vue-tsc`, Vite bundle, Vitest, Prettier).
-   - Desktop shell (`njmule-desktop/src-tauri/`, after `./gradlew :njmule-ui:site`):
+   - Interface: `cargo xtask ui` (API types, `vue-tsc`, Vite bundle, Vitest, Prettier, assets).
+   - Desktop shell (`njmule-desktop/src-tauri/`, after `cargo xtask ui-site`):
      `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`,
      `cargo test --locked --release`.
-   A new or updated dependency also updates its lock file (`Cargo.lock`, `package-lock.json`, or
-   Gradle lock files and checksums; see
+   A new or updated dependency also updates its lock file (`Cargo.lock` or `package-lock.json`; see
    [Dependencies](https://njmule.github.io/njMule/developer/dependencies)).
 5. Open a pull request whose **title** is a Conventional Commits header; fill in the template.
    PRs are squash-merged.

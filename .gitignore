@@ -1,25 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-# --- Gradle ------------------------------------------------------------------
-.gradle/
-build/
-# The web app's packages, installed by npm from package-lock.json.
-node_modules/
-.kotlin/
-# --- Rust / Cargo ------------------------------------------------------------
+# --- Rust / Cargo and Node / build outputs -----------------------------------
 target/
+build/
+node_modules/
 
 # The desktop shell's schemas, made by Tauri at each build.
 njmule-desktop/src-tauri/gen/
 
-# --- Java (Gradle and helper scripts in tools/) ------------------------------
-*.class
-hs_err_pid*
-replay_pid*
-*.log
-
-# --- Documentation website (website/): Docusaurus' cache and the pages made by the build --------
+# --- Documentation website (website/): Docusaurus' cache and generated pages ---
 website/.docusaurus/
 website/docs/_generated/
 website/developer/_generated/
@@ -27,16 +17,12 @@ website/developer/api/reference/
 
 # --- Test tooling ------------------------------------------------------------
 fuzz/crashes/
+*.log
 
-# --- Archives and packages -----------------------------------------------------
-*.jar
-# The Gradle Wrapper needs its jar (checksum pinned in gradle-wrapper.properties).
-!gradle/wrapper/gradle-wrapper.jar
+# --- Archives, installers and native outputs ---------------------------------
 *.zip
 *.tar.gz
 *.rar
-
-# --- Installers and native outputs -------------------------------------------
 *.exe
 *.msi
 *.msix
@@ -47,7 +33,7 @@ fuzz/crashes/
 *.AppImage
 *.flatpak
 
-# --- IDEs and editors -----------------------------------------------------------
+# --- IDEs and editors --------------------------------------------------------
 .idea/
 *.iml
 *.iws
@@ -63,7 +49,7 @@ nbproject/
 *.swp
 *~
 
-# --- Operating systems ----------------------------------------------------------
+# --- Operating systems -------------------------------------------------------
 .DS_Store
 ._*
 Thumbs.db
@@ -71,14 +57,13 @@ ehthumbs.db
 desktop.ini
 $RECYCLE.BIN/
 
-# --- Claude Code: personal, machine-local settings ------------------------------
-# Shared project instructions (CLAUDE.md, .claude/settings.json, .claude/commands/) are committed.
+# --- Claude Code: personal, machine-local settings ---------------------------
 .claude/settings.local.json
 .claude/*.local.*
 CLAUDE.local.md
 **/CLAUDE.local.md
 
-# --- Secrets ---------------------------------------------------------------------
+# --- Secrets -----------------------------------------------------------------
 .env
 .env.*
 *.pem
@@ -88,7 +73,7 @@ CLAUDE.local.md
 *.jks
 *.keystore
 
-# --- Personal data that must never be committed --------------------------------
+# --- Personal data that must never be committed ------------------------------
 # Copies of a real eMule profile, screenshots of the maintainer's eMule, network
 # captures. See CLAUDE.md "Licensing rules".
 fixtures-private/
@@ -97,5 +82,5 @@ fixtures-private/
 *.pcap
 *.etl
 
-# --- Design notes kept local by the maintainer (plan, architecture, ADRs) ---------
+# --- Design notes kept local by the maintainer (plan, architecture, ADRs) ----
 /docs/

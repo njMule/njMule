@@ -10,7 +10,7 @@ The PR title must be a Conventional Commits header, e.g. "feat(kad): add routing
 
 ## Checklist
 
-- [ ] `./gradlew build` passes locally
+- [ ] `cargo test --manifest-path njmule-engine/Cargo.toml --locked` and `cargo xtask ui` pass locally
 - [ ] Tests added or updated
 - [ ] Commits follow Conventional Commits and are signed off (`git commit -s`)
 - [ ] New files carry the SPDX header (or are listed in `REUSE.toml`)

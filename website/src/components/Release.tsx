@@ -54,7 +54,7 @@ function download(version: string, file: string): { name: string; url: string } 
     return { name: file, url: `${REPOSITORY}/releases/download/v${version}/${file}` };
 }
 
-/** The version this documentation describes, from gradle.properties. */
+/** The version this documentation describes, from VERSION. */
 export function useVersion(): string {
     return useDocusaurusContext().siteConfig.customFields?.version as string;
 }

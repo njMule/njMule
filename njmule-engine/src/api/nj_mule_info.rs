@@ -17,7 +17,7 @@ const WARRANTY_END: &str = "17. Interpretation of Sections 15 and 16.";
 const WARRANTY_FALLBACK: &str = "THERE IS NO WARRANTY FOR THE PROGRAM, TO THE EXTENT PERMITTED BY APPLICABLE LAW. \
                                  See sections 15 and 16 of the GNU General Public License.";
 
-/// The semantic version, from `gradle.properties`.
+/// The semantic version, from `VERSION`.
 pub fn version() -> &'static str {
     env!("NJMULE_VERSION")
 }

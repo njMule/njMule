@@ -13,11 +13,12 @@
 # the build context "binary", a directory with amd64/njmule (static) and arm64/njmule, and builds
 # both platforms of the image from them.
 
-FROM eclipse-temurin:25-jdk@sha256:ce2ef9d2d67a68de5e196d4de9d743327c44a10b57fe02ec39f572c652cacfd3 AS ui
+FROM node:24.22.1-slim@sha256:be8204d4bd327363357f532187b752ff62759c31bedf98e9e18fc08c9cbd605c AS ui
 WORKDIR /src
-COPY . .
-RUN --mount=type=cache,target=/root/.gradle,id=njmule-gradle,sharing=locked \
-    ./gradlew --no-daemon --console=plain :njmule-ui:compress
+COPY njmule-engine/assets/openapi.yaml njmule-engine/assets/openapi.yaml
+COPY njmule-ui/ njmule-ui/
+WORKDIR /src/njmule-ui
+RUN npm ci && npm run build && npm run translations && npm run flags && npm run compress
 
 FROM rust:1.99.1@sha256:8a4e90c7946b74626488b1446f712c0fe0ed1a596cbd3d871684bc9c5433ae07 AS build
 ARG TARGETARCH

@@ -4,7 +4,7 @@
 [package]
 name = "njmule-engine"
 version = "0.0.0"
-description = "njMule's engine in Rust, ported from the Java engine and checked against its corpora"
+description = "njMule's eD2K and Kad engine in Rust"
 license = "GPL-3.0-or-later"
 edition = "2024"
 rust-version = "1.99"
