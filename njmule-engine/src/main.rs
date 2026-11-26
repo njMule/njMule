@@ -603,13 +603,15 @@ async fn run(
     };
     let _ = log_filter.reload(parse_log_level(&effective_level));
     tracing::info!("Configuration in {}, logs in {}", config.display(), logs.display());
+    // Install the SIGTERM handler early so a prompt stop signal saves cleanly instead of killing the process.
+    let mut terminate = register_terminate_signal();
     if tasks.is_one_shot() {
         let mut out = io::stdout();
         let mut err = io::stderr();
         let code = tokio::select! {
             code = network_commands::run(&engine, &tasks, &mut out, &mut err) => code,
             _ = tokio::signal::ctrl_c() => 1,
-            () = terminate_signal() => EXIT_SIGTERM,
+            () = wait_terminate_signal(&mut terminate) => EXIT_SIGTERM,
         };
         engine.stop().await;
         return Ok(RunOutcome::Code(code));
@@ -703,7 +705,7 @@ async fn run(
         () = await_eof(stdin_eof), if control => false,
         () = exit.notified() => false,
         _ = tokio::signal::ctrl_c() => false,
-        () = terminate_signal() => true,
+        () = wait_terminate_signal(&mut terminate) => true,
     };
     watcher.abort();
     handoff_task.abort();
@@ -799,13 +801,25 @@ async fn await_eof(rx: Option<oneshot::Receiver<()>>) {
 }
 
 // SIGTERM on Unix stops njMule cleanly so systemd, Docker and uninstallers let it save first.
-async fn terminate_signal() {
+struct TerminateSignal {
     #[cfg(unix)]
-    {
-        if let Ok(mut signal) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            let _ = signal.recv().await;
-            return;
-        }
+    signal: Option<tokio::signal::unix::Signal>,
+}
+
+fn register_terminate_signal() -> TerminateSignal {
+    TerminateSignal {
+        #[cfg(unix)]
+        signal: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok(),
     }
+}
+
+async fn wait_terminate_signal(terminate: &mut TerminateSignal) {
+    #[cfg(unix)]
+    if let Some(sig) = terminate.signal.as_mut() {
+        let _ = sig.recv().await;
+        return;
+    }
+    #[cfg(not(unix))]
+    let _ = terminate;
     std::future::pending::<()>().await;
 }
