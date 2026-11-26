@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The example of the Java engine's IpFilterLevelsTest that reads ranges, under its name; the ones that ask the IP
-//! filter itself wait for its port.
+//! Parsing IP filter range access levels.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

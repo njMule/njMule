@@ -10,7 +10,7 @@ use crate::persist::{atomic_files, property_lines};
 
 pub const FILE_NAME: &str = "statistics.properties";
 
-// The largest number the file holds, which the Java engine reads too.
+// Capped at signed 64-bit max for compatibility with existing statistics.properties files.
 const LARGEST: u64 = i64::MAX.unsigned_abs();
 
 #[derive(Debug, Clone, PartialEq, Eq)]

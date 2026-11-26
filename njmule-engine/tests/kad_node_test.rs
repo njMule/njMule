@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeTest, under its names: the contacts the node learns, the searches it runs, how it lists
+//! The contacts the node learns, the searches it runs, how it lists
 //! them, and the checks of our TCP port.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -654,7 +654,7 @@ struct Answers {
     notes_found: bool,
 }
 
-// Rust's own: what Java's tests reach through the engine.
+// Direct unit coverage for paths also exercised through the engine.
 impl Node {
     fn when_the_node_is_read_directly(&mut self) -> Answers {
         let node = &mut self.node;

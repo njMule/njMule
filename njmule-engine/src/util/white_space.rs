@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The white space texts from the network are trimmed of: ASCII controls and Unicode spaces, but not the no-break
-//! ones (U+00A0, U+2007, U+202F) nor U+0085, which Rust's `trim` takes too. The Java engine trims the same set, so
-//! both engines keep the same names, lines and comments.
+//! ones (U+00A0, U+2007, U+202F) nor U+0085, which Rust's `trim` removes too, so that
+//! names, lines and comments keep no-break spaces intact.
 
 /// Whether `c` is trimmed.
 pub fn is_white_space(c: char) -> bool {

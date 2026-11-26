@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's EngineImportManifestTest: every import of an eMule profile leaves a manifest of
+//! Every import of an eMule profile leaves a manifest of
 //! the files it read, their SHA-256 and what became of them.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]

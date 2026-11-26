@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadObfuscationTest, under its names: whom the downloads connect to, and ask to call back, by
+//! Whom the downloads connect to, and ask to call back, by
 //! the obfuscation they want and the source takes.
 
 #![allow(

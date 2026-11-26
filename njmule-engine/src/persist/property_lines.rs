@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Properties files in UTF-8, read and written as the Java engine does, and their numbered entries (`prefix.N.key`).
+//! Properties files in UTF-8, and their numbered entries (`prefix.N.key`).
 //!
 //! The `java-properties` crate reads them. They are written here: the crate escapes every space and writes a control
-//! character as a short `\u` escape (`\u1`) that no reader takes back, where the Java engine writes it as it is.
+//! character as a short `\u` escape (`\u1`) that standard readers reject, whereas we keep spaces unescaped.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -98,7 +98,7 @@ pub fn numbers(properties: &BTreeMap<String, String>, prefix: &str) -> BTreeSet<
         .collect()
 }
 
-/// Appends the line of `key` and `value` to `text`, escaped as the Java engine writes it.
+/// Appends an escaped `key=value` line to `text`.
 pub fn append(text: &mut String, key: &str, value: &str) {
     escape(text, key, true);
     text.push('=');

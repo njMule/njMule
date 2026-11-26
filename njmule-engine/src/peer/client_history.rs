@@ -3,7 +3,7 @@
 
 //! The clients met, by user hash: the name and program they gave last, when they were first and last met and, when the
 //! countries are shown, where from; never their address. A client not met for [`KEPT`] is forgotten, and at most
-//! [`MAX_CLIENTS`] are kept, those met longest ago going first. Kept in [`FILE_NAME`], as the Java engine keeps it.
+//! [`MAX_CLIENTS`] are kept, those met longest ago going first, persisted in [`FILE_NAME`].
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ impl ClientHistory {
             return history;
         }
         let list = root.get("clients").and_then(Value::as_array).map_or(&[][..], Vec::as_slice);
-        // A malformed client starts the history anew, as in the Java engine.
+        // A malformed client entry resets the history.
         let Some(mut read) = list.iter().map(entry).collect::<Option<Vec<Entry>>>() else {
             tracing::warn!("Starting a new client history: {} holds a malformed client", history.file.display());
             return history;

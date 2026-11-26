@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadPortEngineTest, under its names: Kad whose UDP port another program holds waits, tries the
+//! Kad whose UDP port another program holds waits, tries the
 //! port again, and starts once the port is free.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]

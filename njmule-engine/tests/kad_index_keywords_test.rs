@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadIndexKeywordsTest, under its names: the publishers of a keyword entry, the name it answers
+//! The publishers of a keyword entry, the name it answers
 //! with, and what no answer could carry.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's TcpConnectionTest, under its names: a framed connection with its queues, plain or obfuscated, to
+//! A framed connection with its queues, plain or obfuscated, to
 //! servers, clients and our listener.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects)]

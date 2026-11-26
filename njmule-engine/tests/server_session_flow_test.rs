@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerSessionFlowTest, under its names: a session through its connection attempts and with a
+//! A session through its connection attempts and with a
 //! server a test scripts; loopback only.
 
 #![allow(clippy::unwrap_used, clippy::panic)]
@@ -252,7 +252,7 @@ fn should_tell_in_the_capabilities_how_much_obfuscation_we_want() {
     assert_eq!(server_session::capabilities(ObfuscationMode::Requested), 0x719);
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[tokio::test]
 async fn should_log_in_to_a_server_known_by_a_host_name_at_the_address_it_has() {

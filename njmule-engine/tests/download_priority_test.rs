@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadPriorityTest, under its names: automatic priority puts rare files first.
+//! Automatic priority puts rare files first.
 
 use njmule_engine::api::download_info::DownloadPriority;
 

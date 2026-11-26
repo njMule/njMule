@@ -28,7 +28,7 @@ export const MAX_WHITELIST = 16_384;
 export const MAX_WEBHOOK_URL = 2048;
 export const MAX_NIGHT_HOURS = 13;
 
-/** Anything but a control character, as Java's Character.isISOControl tells them. */
+/** Anything but an ISO control character (U+0000..U+001F, U+007F..U+009F). */
 export function printable(c: string): boolean {
     return !/[\u0000-\u001f\u007f-\u009f]/.test(c);
 }
@@ -96,7 +96,7 @@ function isIpv6(host: string): boolean {
     }
 }
 
-// A domain name as Guava's InternetDomainName.isValid reads it, which the engine uses.
+// A domain name following RFC 1035 / RFC 1123 host label rules, matching the engine's validation.
 function isDomainName(host: string): boolean {
     const name = host.endsWith('.') ? host.slice(0, -1) : host;
     if (name.length > MAX_HOST) {
@@ -123,7 +123,7 @@ export function isValidHost(host: string): boolean {
     return IPV4.test(host) || isIpv6(host) || isDomainName(host);
 }
 
-// What Java's URI refuses: spaces and the characters RFC 2396 leaves out, and a % not followed by two hex digits.
+// Refuses spaces, RFC 2396 disallowed characters, and a % not followed by two hex digits.
 function uriParts(text: string): URL | null {
     if (/[\s"<>\\^`{|}]/.test(text) || /%(?![0-9A-Fa-f]{2})/.test(text)) {
         return null;

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DiskImagesTest, under its names: the macOS tools as a test plays them, hdiutil mounting an image
+//! The macOS tools as a test plays them, hdiutil mounting an image
 //! that holds what the test says.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

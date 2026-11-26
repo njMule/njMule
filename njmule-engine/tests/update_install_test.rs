@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's UpdateInstallTest, under its names: downloading, verifying, unpacking, install modes, night
+//! Downloading, verifying, unpacking, install modes, night
 //! restarts, hand-over, outcomes and rollback.
 
 #![allow(

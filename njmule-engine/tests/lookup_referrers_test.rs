@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's LookupReferrersTest, under its names: a search goes first to the nodes two others vouch for, and
+//! A search goes first to the nodes two others vouch for, and
 //! never to one two others place at different addresses.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

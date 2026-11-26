@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadSessionTest, under its names: one session with a scripted source, run by a loop of its
-//! own, telling only what the Java test's listener hears: data and the end.
+//! Single download session with a scripted source on its own loop, recording data and completion events.
 
 #![allow(
     clippy::unwrap_used,

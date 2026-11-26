@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's FriendsTest, under its names: our friends in `emfriends.met`.
+//! Our friends in `emfriends.met`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

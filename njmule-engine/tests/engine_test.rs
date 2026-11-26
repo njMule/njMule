@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's EngineTest: the start, with its configuration, first set-up and lock, the
+//! The start, with its configuration, first set-up and lock, the
 //! preferences, the servers of a server.met, the status and the totals across restarts. Those of the schedule are in
 //! `engine_schedule_test.rs` and `scheduler_test.rs`.
 

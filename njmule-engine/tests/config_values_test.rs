@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The value types of the preferences, which the Java engine checks through its notifier and network tests: the
-//! notifications, the proxy and the update channel.
+//! Preference value types: notifications, proxy and update channel.
 
 #![allow(clippy::unwrap_used)]
 

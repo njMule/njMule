@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! An eD2K server a test scripts, as the Java engine's tests have it: it answers each login with the id it was given,
+//! A scripted loopback eD2K test server: it answers each login with the id it was given,
 //! sends what the test asks to the last client, and records what it receives. A connection that opens with an
 //! obfuscation handshake is closed at once, as by a server that cannot obfuscate, unless the server was started to take
 //! them. With it, the session the tests drive and the notices it tells.

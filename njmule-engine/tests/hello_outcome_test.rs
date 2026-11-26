@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's HelloOutcomeTest, under its names: hello outcomes when a peer disconnects right after answering
+//! Hello outcomes when a peer disconnects right after answering
 //! or sends a forged SecureIdent proof.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]

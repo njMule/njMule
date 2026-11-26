@@ -4,7 +4,7 @@
 //! Immutable set of blocked IPv4 ranges: a range blocks when its level is below the filter level. Where ranges overlap,
 //! the one listed later wins. Addresses the user always allows are never blocked.
 //!
-//! Held in sorted vectors, as the Java engine holds them after measuring a range map at 5 times the memory: the
+//! Held in sorted vectors after measuring a range map at 5x the memory: the
 //! rangemap crate would also join the adjacent spans of two ranges with one description, which the count of ranges
 //! keeps apart.
 

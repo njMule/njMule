@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `KeepAwakeTest`: inhibiting system sleep while files transfer and lingering afterwards.
+//! Inhibiting system sleep while files transfer and lingering afterwards.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 

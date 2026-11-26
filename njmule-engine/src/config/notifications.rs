@@ -12,7 +12,7 @@ use strum::{EnumString, IntoStaticStr, VariantArray};
 use crate::config::event_commands::Event;
 use crate::util::white_space::strip;
 
-/// Characters of a host, a user, a password or the addresses at most, in UTF-16 units as the Java engine counts them.
+/// Maximum length of a host, user, password or address field, in UTF-16 code units.
 pub const MAX_TEXT: usize = 255;
 /// Characters of the web hook's address at most.
 pub const MAX_URL: usize = 2048;

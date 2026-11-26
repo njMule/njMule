@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadPublisherNotesTest, under its names: our comments on the files we share, published once a day,
+//! Our comments on the files we share, published once a day,
 //! at once when they change, no more once taken away, and one at a time by a reachable node.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

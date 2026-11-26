@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's KadMessagesTest, under their names: ids by words, addresses in host order,
+//! Ids by words, addresses in host order,
 //! round trips of every message, answers split to their size and counts too large for their fields.
 
 #![allow(

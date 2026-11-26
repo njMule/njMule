@@ -49,7 +49,7 @@ impl Comparison {
         })
     }
 
-    /// The name the Java engine and the corpora know the comparison by.
+    /// The canonical name of the comparison operator.
     pub fn name(self) -> &'static str {
         match self {
             Comparison::Equal => "EQUAL",

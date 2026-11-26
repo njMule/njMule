@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's FileHasherTest and GoldenFileHashTest, under their names: the eD2K hash set and
+//! And GoldenFileHashTest, under their names: the eD2K hash set and
 //! the AICH tree of one pass over the data, and the vectors of the independent implementation in `tools/golden/`.
 
 #![allow(

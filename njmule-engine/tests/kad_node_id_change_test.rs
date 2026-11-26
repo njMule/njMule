@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeIdChangeTest, under its names: a node that proves another id too soon is banned, and an
+//! A node that proves another id too soon is banned, and an
 //! answer under another id than the one proven at its address is ignored.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

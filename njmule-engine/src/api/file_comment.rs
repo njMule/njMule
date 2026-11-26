@@ -6,7 +6,7 @@
 use crate::util::white_space;
 
 /// A comment on a file and its rating, from 0 (none) to [`FileComment::MAX_RATING`] (excellent); the text is one line
-/// of at most [`FileComment::MAX_LENGTH`] UTF-16 units, as the Java engine counts them.
+/// of at most [`FileComment::MAX_LENGTH`] UTF-16 code units.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FileComment {
     text: String,

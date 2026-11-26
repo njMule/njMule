@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java LinkHandoffTest, under its names: handing ed2k links and exit requests to the running njMule on the same
+//! Handing ed2k links and exit requests to the running njMule on the same
 //! profile.
 
 #![allow(

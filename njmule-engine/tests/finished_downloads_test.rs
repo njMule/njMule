@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's FinishedDownloadsTest, under their names.
+//! Tests for finished downloads.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -112,7 +112,7 @@ fn should_start_with_none_from_a_file_it_cannot_read() {
     assert!(names(&finished).is_empty());
 }
 
-// Beyond the Java engine's examples: every priority, and lists it cannot take.
+// Additional edge cases: every priority, and lists it cannot take.
 
 #[test]
 fn should_keep_every_priority_across_a_restart() {

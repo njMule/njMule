@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerAnswersTest, under its names: what a logged-in session makes of the server's answers; a
+//! What a logged-in session makes of the server's answers; a
 //! scripted server on the loopback.
 
 #![allow(clippy::unwrap_used)]

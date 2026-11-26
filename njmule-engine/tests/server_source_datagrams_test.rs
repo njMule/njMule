@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's ServerSourceDatagramsTest, under their names.
+//! Tests for server source datagrams.
 
 #![allow(
     clippy::unwrap_used,

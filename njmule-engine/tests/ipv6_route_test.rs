@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's Ipv6RouteTest, under its names: each case of the parameterized test in turn.
+//! Each case of the parameterized test in turn.
 
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 

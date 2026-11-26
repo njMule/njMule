@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's MediaTagsTest, under their names.
+//! Tests for media tags.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

@@ -22,8 +22,8 @@ pub fn icon(path: &str) -> Option<(&'static str, &'static [u8])> {
     }
 }
 
-/// `value` safe in element content and in quoted attributes: `& < > " '` as `&amp; &lt; &gt; &quot; &#39;`, as the Java
-/// engine writes them (the escaping crates write the apostrophe in hexadecimal).
+/// Escapes `value` for element content and quoted attributes (`& < > " '` as `&amp; &lt; &gt; &quot; &#39;`,
+/// using the decimal apostrophe entity).
 pub fn text(value: &str) -> String {
     let mut escaped = String::with_capacity(value.len());
     for c in value.chars() {

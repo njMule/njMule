@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's UploadQueueTest, under its names: upload slots, queueing, bans, friend slot, SecureIdent-gated
+//! Upload slots, queueing, bans, friend slot, SecureIdent-gated
 //! friend sharing, shared directory browsing, AICH requests, idle-slot handover and switching files in a slot.
 
 #![allow(

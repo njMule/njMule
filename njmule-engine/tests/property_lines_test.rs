@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Properties files as the Java engine reads and writes them, which its codecs' tests check through their files.
+//! Reading and writing UTF-8 `.properties` files and escaping rules.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -11,7 +11,7 @@ use std::fs;
 use njmule_engine::persist::{atomic_files, property_lines};
 
 #[test]
-fn should_write_the_escapes_of_the_java_engine() {
+fn should_write_standard_property_escapes() {
     let mut text = String::new();
 
     property_lines::append(&mut text, "a key=:#!", " lead\tand\r\n\u{c}\\ = : # ! é\u{1}");

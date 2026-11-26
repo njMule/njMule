@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeLowIdTest, under its names: what keeps a firewalled Kad node reachable, the UDP firewall
+//! What keeps a firewalled Kad node reachable, the UDP firewall
 //! test, buddies and callbacks.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

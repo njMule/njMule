@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadDiskSpaceTest, under its names: Windows refuses writes into a range another handle locked,
+//! Windows refuses writes into a range another handle locked,
 //! as it refuses those to a full disk.
 
 #![allow(
@@ -109,7 +109,7 @@ impl DiskSpace {
         assert_eq!(blocks, [Block { start: 0, end: EMBLOCKSIZE }]);
     }
 
-    // What the Java test's listener tells: the disk space and a failure.
+    // Events observed by the test listener: disk space and failures.
     fn next_told(&mut self) -> Option<String> {
         self.lab.next(WAIT, |event| match event {
             QueueEvent::DiskSpace(true) => Some("space enough".to_owned()),

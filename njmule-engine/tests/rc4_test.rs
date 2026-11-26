@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Rc4Test, under their names. A skip cannot go backwards (its length is unsigned),
+//! A skip cannot go backwards (its length is unsigned),
 //! and there is no rekeying: a new key stream costs what rekeying did, with no cipher to look up.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's UploadSessionTest, under its names: the list of our files a browsing client gets; and a client
+//! The list of our files a browsing client gets; and a client
 //! browsing a running engine.
 
 #![allow(clippy::unwrap_used)]
@@ -86,7 +86,7 @@ fn should_stop_growing_a_list_past_its_limit() {
     assert!(names(&list).len() < files.len());
 }
 
-// Beyond the Java engine's examples: a client browsing a running engine, as the preferences let it.
+// Additional edge cases: a client browsing a running engine, as the preferences let it.
 
 async fn engine_sharing(preferences: &str) -> (tempfile::TempDir, Engine) {
     let profile = tempfile::tempdir().unwrap();

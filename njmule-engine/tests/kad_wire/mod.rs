@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Kad nodes on a simulated wire, for the Java engine's simulations: what one node sends reaches another at the next
+//! Kad nodes on a simulated wire for multi-node simulations: what one node sends reaches another at the next
 //! delivery, a helper asked to check a node's TCP port connects back at once, and the clock moves only when told.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

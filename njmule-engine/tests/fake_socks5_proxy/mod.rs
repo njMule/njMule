@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A SOCKS5 proxy on the loopback that grants UDP ASSOCIATE and relays the datagrams both ways, for tests, as the Java
-//! engine's tests have it. It may ask for a user name and password, or refuse the command; it notes what it saw.
+//! A loopback SOCKS5 test proxy that grants UDP ASSOCIATE and relays datagrams both ways.
+//! It may require username/password authentication or refuse the command, recording every request.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 

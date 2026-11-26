@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeLegacyChallengeTest, under its names: nodes older than the hello acknowledgement prove
+//! Nodes older than the hello acknowledgement prove
 //! their address by answering a request only they were sent, a ping or a plain lookup for a random target.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

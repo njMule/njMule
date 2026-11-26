@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's TagCodecTest, under their names: expected bytes follow the old and new eD2K tag
+//! Expected bytes follow the old and new eD2K tag
 //! encodings and the Kad tag encoding.
 
 #![allow(

@@ -122,7 +122,7 @@ debug = "line-tables-only"
 debug = false
 
 [profile.release]
-# Silent wrapping in release builds is a bug class Java does not have: checked through the betas.
+# Keep arithmetic overflow checks active in release builds through the betas.
 overflow-checks = true
 lto = "thin"
 strip = "symbols"

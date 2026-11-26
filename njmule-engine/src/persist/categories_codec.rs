@@ -64,7 +64,7 @@ fn category(properties: &BTreeMap<String, String>, id: i32) -> Result<Category, 
         color: color.parse().map_err(|_| format!("not a colour: {color}"))?,
         priority: DownloadPriority::of_name(priority).ok_or_else(|| format!("not a priority: {priority}"))?,
         patterns: get("patterns").unwrap_or_default().to_owned(),
-        // As the Java engine reads it: only "true", in any case, is true.
+        // Only "true" (ASCII case-insensitive) parses as true.
         regex: get("regex").is_some_and(|regex| regex.eq_ignore_ascii_case("true")),
     }
     .validated()

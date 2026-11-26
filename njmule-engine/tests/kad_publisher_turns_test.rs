@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadPublisherTurnsTest, under its names: a publish the node refuses does not hold back the next
+//! A publish the node refuses does not hold back the next
 //! ones, a busy node starts none, and a keyword with more files than its share carries the next ones each time.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

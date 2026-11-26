@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's PacketReaderWriterTest, under their names; those of patching what was written
-//! and of a size cap, which the engine never uses, and of negative lengths, which Rust cannot have, are Java only.
+//! Binary packet reader and writer round-trip and bounds checks.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's SearchParserTest, under their names: the syntax, attributes, errors and the
+//! The syntax, attributes, errors and the
 //! trees servers and Kad receive, and the word Kad looks up.
 
 #![allow(

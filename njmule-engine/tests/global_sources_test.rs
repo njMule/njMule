@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's GlobalSourcesTest, under their names, with the clock in the test's hands.
+//! , with the clock in the test's hands.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -191,7 +191,7 @@ fn should_ask_again_half_an_hour_after_a_pass() {
     assert_eq!(sent.map(|(to, packet)| (to, files_asked(&packet))), Some((udp("B"), vec![file(1)])));
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[test]
 fn should_ask_nothing_more_once_stopped_and_pause_before_the_next_pass() {

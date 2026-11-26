@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A UPnP router on the loopback, as the Java engine's FakeGateway (never the real one): it answers discovery with the
+//! A loopback UPnP test router (never touching the real network): it answers discovery with the
 //! address of its HTTP server, which serves the description and records the SOAP actions.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

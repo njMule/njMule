@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PreferencesCodecTest, under its names, and the changes the API makes.
+//! , and the changes the API makes.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

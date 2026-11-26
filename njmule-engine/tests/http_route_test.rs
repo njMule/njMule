@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's HttpRouteTest, under its names: the client leaves from the interface chosen, as a server on the
+//! The client leaves from the interface chosen, as a server on the
 //! loopback sees it.
 
 #![allow(clippy::unwrap_used)]

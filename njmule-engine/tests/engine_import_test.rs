@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's EngineImportTest: an eMule profile imported into a running engine, its downloads
+//! An eMule profile imported into a running engine, its downloads
 //! going on, its identity taken at the next start, its searches and categories, and a dry run that changes nothing.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

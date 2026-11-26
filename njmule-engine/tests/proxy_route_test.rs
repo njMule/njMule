@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ProxyRouteTest, under its names, with proxies of SOCKS 5, SOCKS 4 and HTTP made up for it.
+//! , with proxies of SOCKS 5, SOCKS 4 and HTTP made up for it.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 

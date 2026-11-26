@@ -14,7 +14,7 @@ use crate::util::white_space::strip;
 /// No category.
 pub const NONE: u32 = 0;
 pub const COLORS: u32 = 8;
-// Lengths are in UTF-16 units, as the Java engine counts them.
+// Lengths are counted in UTF-16 code units.
 pub const MAX_NAME: usize = 64;
 pub const MAX_COMMENT: usize = 256;
 pub const MAX_PATTERNS: usize = 1024;
@@ -82,8 +82,8 @@ impl Category {
     }
 }
 
-// The regular expressions are read as the Java engine reads them, look-arounds and back references included, which
-// the regex crate has not.
+// Category regular expressions support look-arounds and back references, which
+// the `regex` crate does not.
 fn compiled(patterns: &str) -> Result<Regex, String> {
     RegexBuilder::new(patterns)
         .case_insensitive(true)

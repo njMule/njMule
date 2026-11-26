@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's TrustedProxiesTest, under its names: which client a request comes from, as the trusted proxies
+//! Which client a request comes from, as the trusted proxies
 //! tell.
 
 #![allow(clippy::unwrap_used)]

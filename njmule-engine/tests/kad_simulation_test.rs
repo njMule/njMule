@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadSimulationTest, under its names: two hundred nodes on a simulated wire bootstrap from each
+//! Two hundred nodes on a simulated wire bootstrap from each
 //! other, run for four hours, publish and find a keyword and a source, and one starts again from its nodes.dat.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

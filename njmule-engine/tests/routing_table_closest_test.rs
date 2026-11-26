@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's RoutingTableClosestTest, under its name: the closest contacts the table walks to are those a full
+//! , under its name: the closest contacts the table walks to are those a full
 //! sort finds.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

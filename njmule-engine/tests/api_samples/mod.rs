@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ApiSamples: records of the engine with every field set, as the API's answers and events carry
+//! Records of the engine with every field set, as the API's answers and events carry
 //! them.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]

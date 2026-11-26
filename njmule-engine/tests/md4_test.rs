@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Md4Test, under their names: the MD4 of the md4 crate, which the eD2K hashes use.
+//! The MD4 of the md4 crate, which the eD2K hashes use.
 
 #![allow(clippy::unwrap_used)]
 

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's IdentityHandshakeTest, under its names: two peers proving each other the user hashes they show.
+//! Two peers proving each other the user hashes they show.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -273,7 +273,7 @@ fn should_check_a_signature_bound_to_no_address_as_such() {
     assert!(matches!(handled.outcome, Some(Outcome::Identified { user_hash, .. }) if user_hash == HASH_B));
 }
 
-// Beyond the Java engine's examples: the trust a connection's session gives, and our key file.
+// Additional edge cases: the trust a connection's session gives, and our key file.
 
 #[test]
 fn should_trust_a_peer_that_does_not_take_part_unsecured_and_one_that_does_once_identified() {

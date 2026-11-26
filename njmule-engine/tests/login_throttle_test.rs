@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's LoginThrottleTest, under its names: login attempts are counted per client, one IPv4 address or one
+//! Login attempts are counted per client, one IPv4 address or one
 //! IPv6 network of a /64 whose host part it picks.
 
 #![allow(clippy::unwrap_used)]

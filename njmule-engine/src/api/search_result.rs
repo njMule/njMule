@@ -126,7 +126,7 @@ impl Origin {
     }
 }
 
-// The lowest addresses as signed numbers, which the Java engine keeps of a longer list.
+// Keep the lowest addresses in signed 32-bit order when capping a longer list.
 fn capped(addresses: impl IntoIterator<Item = u32>) -> BTreeSet<u32> {
     let all: BTreeSet<u32> = addresses.into_iter().collect();
     if all.len() <= Origin::MAX_ADDRESSES {

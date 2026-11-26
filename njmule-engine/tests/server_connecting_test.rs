@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's ServerConnectingTest, under its names: how the session reaches servers, obfuscated or not, which
+//! How the session reaches servers, obfuscated or not, which
 //! first; scripted servers on the loopback, or on this computer's network address where the list must take them.
 
 #![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]

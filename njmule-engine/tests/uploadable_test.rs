@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! What of a file can be sent, and whether its blocks are worth compressing. Beyond the Java engine's examples, which
-//! reach Uploadable through the upload manager.
+//! What of a file can be sent, and whether its blocks are worth compressing.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]
 

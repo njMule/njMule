@@ -3,7 +3,7 @@
 
 //! The installation of a new version, from its hand-over to its end: what the stopping njMule asks the installer to do,
 //! then how far the installer got. It lives in `cache/update/apply.properties` until the new version has proved itself,
-//! so that the next start of either version, Java or Rust, can tell the user what happened.
+//! so that the next start can tell the user what happened.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -169,7 +169,7 @@ fn path(p: &BTreeMap<String, String>, key: &str) -> Option<PathBuf> {
     p.get(key).filter(|value| !value.trim().is_empty()).map(PathBuf::from)
 }
 
-// As the Java engine reads a boolean: true only when it says so.
+// Only "true" (ASCII case-insensitive) parses as true.
 fn flag(p: &BTreeMap<String, String>, key: &str) -> bool {
     p.get(key).is_some_and(|value| value.eq_ignore_ascii_case("true"))
 }

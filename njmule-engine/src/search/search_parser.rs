@@ -14,10 +14,10 @@ use crate::search::search_syntax_error::{Reason, SearchSyntaxError};
 
 /// Operators allowed in one expression (the request adds its own attributes).
 pub const MAX_OPERATORS: usize = 10;
-/// UTF-16 units an expression has at most, as the Java engine counts its characters.
+/// Maximum length of a search expression, in UTF-16 code units.
 pub const MAX_LENGTH: usize = 1024;
 const MAX_DEPTH: usize = 32;
-// 2^63: numbers stay within a signed long, as the Java engine holds them.
+// 2^63: numeric operands stay within signed 64-bit range.
 const MAX_NUMBER: f64 = 9_223_372_036_854_775_808.0;
 
 pub fn parse(expression: &str) -> Result<SearchExpr, SearchSyntaxError> {
@@ -386,7 +386,7 @@ impl Lexer {
         if self.state == State::Length
             && let Some((parts, end)) = self.hours_minutes_seconds(start)
         {
-            // Signed long arithmetic, as the Java engine counts: beyond it the number is too large.
+            // Signed 64-bit arithmetic: beyond i64::MAX the duration is out of range.
             let seconds = match parts {
                 (Some(a), Some(b), None) => a.checked_mul(60).and_then(|m| m.checked_add(b)),
                 (Some(a), Some(b), Some(Some(c))) => a
@@ -414,7 +414,7 @@ impl Lexer {
                 'g' => 1_000_000_000.0,
                 _ => 0.0,
             },
-            State::Size => match java_lower_case(unit) {
+            State::Size => match single_char_lower(unit) {
                 'b' => 1.0,
                 'k' => 1024.0,
                 'm' => 1_048_576.0,
@@ -436,7 +436,7 @@ impl Lexer {
         if scaled.is_nan() || scaled >= MAX_NUMBER {
             return Err(too_large());
         }
-        // Rounded half up, as the Java engine rounds; below 2^63 the conversion cannot saturate.
+        // Rounded half up; below 2^63 the conversion cannot saturate.
         let rounded = (scaled + 0.5) as u64;
         self.number_token(rounded, start);
         Ok(())
@@ -668,8 +668,8 @@ fn ed2k_term(link: &str, position: usize) -> Result<String, SearchSyntaxError> {
     }
 }
 
-// The lower case the Java engine takes for a unit: one character to one, so that the Kelvin sign is a 'k'.
-fn java_lower_case(c: char) -> char {
+// One-to-one Unicode lowercasing for a unit character (e.g. Kelvin sign -> 'k').
+fn single_char_lower(c: char) -> char {
     let mut lower = c.to_lowercase();
     match (lower.next(), lower.next()) {
         (Some(one), None) => one,

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's BuddyLinkTest, under its names: the TCP link between Kad buddies, on a loop of its own that makes
+//! The TCP link between Kad buddies, on a loop of its own that makes
 //! the connections it asks for as the network does, with peers on the loopback address and a clock the test moves.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

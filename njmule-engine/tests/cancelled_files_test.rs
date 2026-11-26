@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `CancelledFilesTest`: cancelled downloads remembered under salted keys in `cancelled.met`.
+//! Cancelled downloads remembered under salted keys in `cancelled.met`.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 

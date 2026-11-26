@@ -70,7 +70,7 @@ const CHECK_VARIABLE: &str = "NJMULE_REMOTE_CHECK";
 const CHECKED_LINE: &str = "njmule-remote ";
 /// How long the dialog waits for the new window to reach the other njMule.
 const OPEN_WAIT: Duration = Duration::from_secs(60);
-/// The connections remembered, address and token, in the desktop app's folder of the profile (a Java properties file).
+/// The connections remembered, address and token, in the desktop app's folder of the profile (a `.properties` file).
 const REMOTES_FILE: &str = "remotes.properties";
 
 /// Where the engine's API answers and the token that proves the window to it.
@@ -348,8 +348,7 @@ fn first_errors(output: impl std::io::Read) -> String {
     first.join("\n")
 }
 
-/// A line of the engine's output, in UTF-8 or else in the system's code page, which Java writes in on Windows when it
-/// has no console.
+/// A line of the engine's output, in UTF-8 or else in the system's active code page on Windows.
 fn output_text(bytes: &[u8]) -> String {
     if let Ok(text) = std::str::from_utf8(bytes) {
         return text.to_owned();
@@ -1801,8 +1800,8 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("njmule-remotes-read-{}", std::process::id()));
         let file = dir.join(REMOTES_FILE);
         std::fs::create_dir_all(&dir).unwrap();
-        let java = "#njMule remote connections\n#Sat Oct 31 15:00:00 CET 2026\n";
-        std::fs::write(&file, format!("{java}{}\n", r"http\://nas.local\:4711/api/v1=Tok_en-1")).unwrap();
+        let header = "#njMule remote connections\n#Sat Oct 31 15:00:00 CET 2026\n";
+        std::fs::write(&file, format!("{header}{}\n", r"http\://nas.local\:4711/api/v1=Tok_en-1")).unwrap();
 
         let all = read_remotes(&file);
 

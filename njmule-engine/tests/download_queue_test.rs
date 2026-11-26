@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadQueueTest, under its names: a queue over a temp directory, its disk work brought back and
-//! its events told as the Java listeners tell them.
+//! Download queue over a temp directory, verifying persistence, disk work and listener events.
 
 #![allow(
     clippy::unwrap_used,
@@ -35,7 +34,7 @@ use tokio::sync::mpsc;
 
 const WAIT: Duration = Duration::from_secs(30);
 
-// How a test hears the queue, as the Java test's listeners: the plain one tells free space but no corrupt part, the
+// Queue test listeners: the plain one reports free space but not corrupt parts, while the
 // recorder a corrupt part but no free space; two more act on what they hear.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Listener {

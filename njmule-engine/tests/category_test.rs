@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's CategoryTest, under its names.
+//! Tests for category.
 
 #![allow(clippy::unwrap_used)]
 
@@ -97,7 +97,7 @@ fn should_refuse_an_invalid_regular_expression() {
 }
 
 #[test]
-fn should_read_the_regular_expressions_of_the_java_engine() {
+fn should_read_extended_regular_expressions() {
     for (expression, name, expected) in [
         ("(?!sample).*\\.mkv", "film.mkv", true),
         ("(?!sample).*\\.mkv", "Sample.mkv", false),

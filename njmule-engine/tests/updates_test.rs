@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's UpdatesTest, under its names: checking for new versions, signature verification, replay guard,
+//! Checking for new versions, signature verification, replay guard,
 //! skipping, channel filtering and schedule.
 
 #![allow(

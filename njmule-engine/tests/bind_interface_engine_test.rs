@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `BindInterfaceEngineTest`: offline while the chosen interface is gone, online at once when changed.
+//! Offline while the chosen interface is gone, online at once when changed.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 

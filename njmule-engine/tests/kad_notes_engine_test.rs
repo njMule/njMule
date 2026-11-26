@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNotesEngineTest, under its names: the engine searches Kad for notes on the files it knows, and
+//! The engine searches Kad for notes on the files it knows, and
 //! only while Kad is connected.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

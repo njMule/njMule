@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's NatPmpTest, under its names: a router found with NAT-PMP or PCP, its mappings and the IPv6 pinholes
+//! A router found with NAT-PMP or PCP, its mappings and the IPv6 pinholes
 //! of a PCP router, against a router on the loopback.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

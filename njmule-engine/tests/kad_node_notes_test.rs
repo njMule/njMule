@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadNodeNotesTest, under its names: notes over Kad as one node sees them, stored and answered
+//! Notes over Kad as one node sees them, stored and answered
 //! for others, published and searched for us.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

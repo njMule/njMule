@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EmuleConfigDirectoryTest, under its names: finding the configuration folder of the eMule of this
+//! Finding the configuration folder of the eMule of this
 //! computer's user.
 
 #![allow(clippy::unwrap_used)]

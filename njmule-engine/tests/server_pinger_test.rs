@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's ServerPingerTest, under their names. The pinger here hands what to send to the
+//! The pinger here hands what to send to the
 //! engine, which owns the socket and the timer.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]

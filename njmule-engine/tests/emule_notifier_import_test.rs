@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EmuleNotifierImportTest, under its names.
+//! Tests for emule notifier import.
 
 #![allow(clippy::unwrap_used)]
 

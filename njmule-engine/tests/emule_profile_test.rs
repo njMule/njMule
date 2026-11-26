@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EmuleProfileTest, under its names: a real eMule profile, read and never written, from
+//! A real eMule profile, read and never written, from
 //! `NJMULE_EMULE_CONFIG`, and its downloads in progress from `NJMULE_EMULE_TEMP`. Without them each test passes at
 //! once. `cargo test --test emule_profile_test -- --nocapture` shows the counts, never names or hashes.
 

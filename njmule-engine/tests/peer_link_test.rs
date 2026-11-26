@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PeerLinkTest, under its names: the side of a client link each packet goes to.
+//! The side of a client link each packet goes to.
 
 use njmule_engine::peer::peer_link::{self, Side};
 use njmule_engine::protocol::packet::opcodes::{client, extended};
@@ -59,7 +59,7 @@ fn should_route_a_hello_a_chat_or_an_unknown_packet_to_the_upload() {
     assert_eq!(sides, [Side::Upload; 3]);
 }
 
-// Beyond the Java engine's examples: what buddies send each other.
+// Additional edge cases: what buddies send each other.
 
 #[test]
 fn should_route_what_buddies_send_each_other_to_the_buddy_link() {

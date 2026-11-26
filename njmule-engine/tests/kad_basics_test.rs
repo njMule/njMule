@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's KadBasicsTest, under its names: keywords and their ids, the network's lower case, the routing
+//! Keywords and their ids, the network's lower case, the routing
 //! table's first rules, and the flood control and answer checking of Kad datagrams.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -534,7 +534,7 @@ fn should_not_take_an_answer_too_late() {
     basics.then_the_answer_is_not_taken("too late");
 }
 
-// Rust's own: what Java's tests reach through the node.
+// Direct unit coverage for paths also exercised through the node.
 
 fn when_an_identity_is_made_of(id: u128) -> Option<UInt128> {
     KadIdentity::new(UInt128(id), 7).map(|identity| identity.id())

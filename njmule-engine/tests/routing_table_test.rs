@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's RoutingTableTest, under its names: which contacts the routing table takes, updates and gives as
+//! Which contacts the routing table takes, updates and gives as
 //! the closest, its shape while contacts come and go, and how many nodes it guesses the network holds.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's MetFilesTest, under their names: the binary files of a profile, written and read
+//! The binary files of a profile, written and read
 //! back.
 
 #![allow(

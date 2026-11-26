@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's PartMetSavingTest, under its names: a part.met another program holds is saved on the download's
+//! A part.met another program holds is saved on the download's
 //! disk thread, not on the engine's.
 
 #![allow(

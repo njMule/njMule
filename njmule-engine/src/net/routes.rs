@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! Where outgoing connections go: from the network interface chosen, and through the proxy of the preferences. Both
-//! are read at each connection, so new settings apply at once. The network passes its routes to whatever connects,
-//! where the Java engine keeps them for the whole process.
+//! are read at each connection, so new settings apply at once. The network passes its routes to every
+//! outgoing connection.
 
 use std::fmt;
 use std::io;

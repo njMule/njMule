@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `org.njmule.app.CommandRunTest`: `link_association::run_command_with_timeout` on real child
+//! `link_association::run_command_with_timeout` on real child
 //! processes, never a system tool.
 
 #![allow(clippy::unwrap_used)]

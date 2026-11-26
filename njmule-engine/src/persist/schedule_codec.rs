@@ -64,7 +64,7 @@ fn rule(properties: &BTreeMap<String, String>, key: &str) -> Result<Rule, String
     let get = |name: &str| properties.get(&format!("{key}{name}")).map(String::as_str);
     Rule {
         name: get("name").unwrap_or_default().to_owned(),
-        // As the Java engine reads it: only "true", in any case, is true.
+        // Only "true" (ASCII case-insensitive) parses as true.
         enabled: get("enabled").is_none_or(|enabled| enabled.eq_ignore_ascii_case("true")),
         days: days(get("days").unwrap_or_default())?,
         start: schedule::parse_time(strip(get("start").unwrap_or("00:00")))?,

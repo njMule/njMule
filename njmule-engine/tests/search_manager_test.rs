@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's SearchManagerTest, under their names: server and global searches, and Kad searches
+//! Server and global searches, and Kad searches
 //! on a Kad the test plays.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic, clippy::arithmetic_side_effects)]
@@ -849,7 +849,7 @@ fn should_end_a_global_search_with_the_server_answer_without_the_udp_socket() {
 #[test]
 fn should_end_a_global_search_no_server_can_be_asked_over_udp_once_the_time_for_answers_is_over() {
     // A query that cannot be made for a server without 64-bit sizes: the search still ends, once the time for answers
-    // is over. The one sent, which the Java engine's closed socket fails, is never answered.
+    // is over; the request sent on the closed socket is never answered.
     let mut searching = servers_with_large_files_without_them_and_without_a_udp_port();
     let search = searching.start_for("@size>5g linux", Scope::Global);
     searching.answer(&[], false);
@@ -863,7 +863,7 @@ fn should_end_a_global_search_no_server_can_be_asked_over_udp_once_the_time_for_
     assert_eq!(searching.ended(search), Some(0));
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[test]
 fn should_end_a_server_search_the_server_never_answers() {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A router on the loopback that answers NAT-PMP (RFC 6886) or PCP only (RFC 6887), as the Java engine's FakeNatPmp. It
+//! A loopback test router answering NAT-PMP (RFC 6886) or PCP (RFC 6887). It
 //! notes each mapping asked for, as "map TCP 4662 3600" or "delete UDP 4672", with the nonce after it in PCP.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

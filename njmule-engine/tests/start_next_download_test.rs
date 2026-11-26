@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `StartNextDownloadTest`: which paused download starts when another one leaves.
+//! Which paused download starts when another one leaves.
 
 #![allow(
     clippy::unwrap_used,

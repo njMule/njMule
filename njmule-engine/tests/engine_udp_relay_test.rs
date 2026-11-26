@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Twin of Java's `EngineUdpRelayTest`: both server and Kad UDP sockets go through a SOCKS5 proxy relay.
+//! Both server and Kad UDP sockets go through a SOCKS5 proxy relay.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]
 

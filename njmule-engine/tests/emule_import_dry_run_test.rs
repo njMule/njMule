@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EmuleImportDryRunTest, under its names: a dry run of the import on a real eMule profile from
+//! A dry run of the import on a real eMule profile from
 //! `NJMULE_EMULE_CONFIG`, which is only read; it prints the outcome of each file, never names, hashes or other contents.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects)]

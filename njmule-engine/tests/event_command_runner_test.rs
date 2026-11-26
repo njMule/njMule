@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's EventCommandRunnerTest, under its names, and the start of a program: the user's commands run on
+//! , and the start of a program: the user's commands run on
 //! the engine's events.
 
 #![allow(clippy::unwrap_used)]

@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A client greets the engine on its listening port: the engine answers with its hello, the way the transcripts of the
-//! Java engine record it.
+//! Peer greeting handshake on the engine's listening port, checked against the recorded transcripts.
 
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
@@ -92,7 +91,7 @@ async fn should_tell_what_a_greeted_client_said() {
     engine.stop().await;
 }
 
-// Beyond the Java engine's examples: what its listener tests show through TcpConnector.accept.
+// Additional handshake and listener acceptance edge cases.
 
 #[tokio::test]
 async fn should_answer_a_hello_over_an_obfuscated_connection() {

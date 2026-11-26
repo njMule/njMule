@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's OtherFilesTest, under their names: the Kad indexes, the search files, the text
+//! The Kad indexes, the search files, the text
 //! files and the IP filter lists. The ini files, read only when importing a profile, are not ported yet.
 
 #![allow(

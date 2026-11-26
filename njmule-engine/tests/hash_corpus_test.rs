@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's answers in `golden/hashes.jsonl`, given again: how files split into eD2K parts, how AICH trees
+//! Replays `golden/hashes.jsonl`: how files split into eD2K parts, how AICH trees
 //! are built from their block hashes and what AICH recovery data proves.
 
 #![allow(
@@ -21,7 +21,7 @@ const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/hashes.j
 
 #[test]
 fn should_give_the_recorded_answers() {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     let mut differences = Vec::new();
     let mut cases = 0;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -40,7 +40,7 @@ fn hash20(value: &Value) -> [u8; 20] {
     hex::decode(value.as_str().unwrap()).unwrap().try_into().unwrap()
 }
 
-// What the Java engine's HashCorpusTest answers for the input of `recorded`.
+// Expected answer from the golden corpus for the input of `recorded`.
 fn answered(recorded: &Value) -> Value {
     let kind = recorded["kind"].as_str().unwrap();
     let fields: &[&str] = match kind {

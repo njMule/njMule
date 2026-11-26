@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The examples of the Java engine's Ed2kTest, under their names: MD4, parts and hash sets.
+//! MD4, parts and hash sets.
 
 #![allow(
     clippy::unwrap_used,

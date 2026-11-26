@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's BindInterfaceTest, under its names, and how a choice reads as an address.
+//! , and how a choice reads as an address.
 
 #![allow(clippy::unwrap_used)]
 
@@ -84,7 +84,7 @@ fn should_offer_the_interfaces_with_an_address_but_the_loopback() {
     assert_eq!(choices, ["eth0", "wg0", "eth1"]);
 }
 
-// Beyond the Java engine's examples: the interfaces of the computer the tests run on, which always has a loopback.
+// Additional edge cases: the interfaces of the computer the tests run on, which always has a loopback.
 
 #[test]
 fn should_list_the_interfaces_of_this_computer_with_the_loopback_among_them() {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's UploadManagerTest, under its names: clients on the loopback address asking for our files, the
+//! Clients on the loopback address asking for our files, the
 //! uploads served by a loop of their own with a clock the tests move.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
@@ -2432,7 +2432,7 @@ async fn should_forget_the_source_answers_given_once_they_can_be_asked_again() {
     uploads.then_no_source_answer_is_remembered().await;
 }
 
-// Beyond the Java engine's twins: requests its engine tests send through a whole engine, and the edges of the queue.
+// Additional edge cases: requests its engine tests send through a whole engine, and the edges of the queue.
 
 #[tokio::test]
 async fn should_tell_a_client_the_hash_set_of_a_download() {

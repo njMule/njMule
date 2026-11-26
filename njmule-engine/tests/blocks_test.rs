@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's BlocksTest, under its names: a block of a file cut into the packets that carry it, compressed when
+//! A block of a file cut into the packets that carry it, compressed when
 //! that is worth it.
 
 #![allow(clippy::unwrap_used, clippy::arithmetic_side_effects, clippy::indexing_slicing)]
@@ -66,7 +66,7 @@ fn should_send_a_block_as_it_is_when_the_client_takes_no_compression() {
     every_packet_is(&packets, client::SENDINGPART);
 }
 
-// Beyond the Java engine's examples: the branches its other tests reach.
+// Additional edge cases: the branches its other tests reach.
 
 #[test]
 fn should_read_a_block_from_disk_and_refuse_one_beyond_the_file() {

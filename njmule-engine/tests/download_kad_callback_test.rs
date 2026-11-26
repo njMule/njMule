@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's DownloadKadCallbackTest, under its names: sources firewalled on Kad, asked to connect to us
+//! Sources firewalled on Kad, asked to connect to us
 //! through their buddy or directly, then taken when they do; with a scripted source on the loopback address and a
 //! clock the test moves.
 

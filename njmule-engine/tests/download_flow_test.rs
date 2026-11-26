@@ -91,7 +91,7 @@ async fn should_download_a_file_sent_in_compressed_blocks() {
         "shared.bin",
         2 * PART + 12_345,
         1,
-        PeerConfig::simple(flow_lab::java_hash(1)),
+        PeerConfig::simple(flow_lab::seeded_hash(1)),
         &mut recorder,
     )
     .await;
@@ -127,7 +127,7 @@ async fn should_keep_a_completed_download_listed_until_the_completed_are_cleared
         "shared.bin",
         12_345,
         2,
-        PeerConfig::simple(flow_lab::java_hash(2)),
+        PeerConfig::simple(flow_lab::seeded_hash(2)),
         &mut recorder,
     )
     .await;
@@ -158,7 +158,7 @@ async fn should_take_one_completed_download_off_the_list_and_keep_its_file() {
         "shared.bin",
         12_345,
         2,
-        PeerConfig::simple(flow_lab::java_hash(2)),
+        PeerConfig::simple(flow_lab::seeded_hash(2)),
         &mut recorder,
     )
     .await;
@@ -192,7 +192,7 @@ async fn should_let_a_source_download_from_us_over_the_connection_we_download_on
         "shared.bin",
         PART / 2,
         10,
-        PeerConfig::simple(flow_lab::java_hash(10)),
+        PeerConfig::simple(flow_lab::seeded_hash(10)),
         &mut recorder,
     )
     .await;
@@ -233,7 +233,7 @@ async fn should_wait_in_the_queue_and_get_a_slot_again_after_the_session_ends() 
         PART + 500_000,
         2,
         PeerConfig {
-            user_hash: flow_lab::java_hash(2),
+            user_hash: flow_lab::seeded_hash(2),
             compress: false,
             slot: SlotMode::AfterQueue,
             session_limit: 1_000_000,
@@ -268,7 +268,7 @@ async fn should_download_a_corrupt_part_again() {
         2 * PART + 1000,
         3,
         PeerConfig {
-            user_hash: flow_lab::java_hash(3),
+            user_hash: flow_lab::seeded_hash(3),
             compress: true,
             slot: SlotMode::Now,
             session_limit: 0,
@@ -301,7 +301,7 @@ async fn should_save_the_good_blocks_of_a_corrupt_part_with_aich_recovery_data()
         3 * PART + 1000,
         6,
         PeerConfig {
-            user_hash: flow_lab::java_hash(6),
+            user_hash: flow_lab::seeded_hash(6),
             compress: false,
             slot: SlotMode::Now,
             session_limit: 0,
@@ -335,7 +335,7 @@ async fn should_get_the_slot_when_the_source_calls_back() {
         PART / 2,
         4,
         PeerConfig {
-            user_hash: flow_lab::java_hash(4),
+            user_hash: flow_lab::seeded_hash(4),
             compress: true,
             slot: SlotMode::CallBack,
             session_limit: 0,
@@ -370,7 +370,7 @@ async fn should_download_from_the_sources_the_server_knows() {
         "served.bin",
         1_000_000,
         5,
-        PeerConfig::simple(flow_lab::java_hash(5)),
+        PeerConfig::simple(flow_lab::seeded_hash(5)),
         &mut recorder,
     )
     .await;
@@ -417,7 +417,7 @@ async fn should_download_from_the_sources_another_server_knows() {
         "elsewhere.bin",
         700_000,
         7,
-        PeerConfig::simple(flow_lab::java_hash(7)),
+        PeerConfig::simple(flow_lab::seeded_hash(7)),
         &mut recorder,
     )
     .await;
@@ -484,7 +484,7 @@ async fn should_ask_a_firewalled_source_the_server_knows_to_call_us() {
         "firewalled.bin",
         800_000,
         6,
-        PeerConfig::simple(flow_lab::java_hash(6)),
+        PeerConfig::simple(flow_lab::seeded_hash(6)),
         &mut recorder,
     )
     .await;

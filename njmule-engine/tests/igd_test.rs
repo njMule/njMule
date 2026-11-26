@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's IgdTest, under its names: a UPnP gateway found over SSDP and described over HTTP, its SOAP
+//! A UPnP gateway found over SSDP and described over HTTP, its SOAP
 //! actions, and the reasons of its refusals, against a gateway on the loopback.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]

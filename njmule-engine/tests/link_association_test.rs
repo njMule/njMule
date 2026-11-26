@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java LinkAssociationTest, under its names: the commands the association runs against a pretend system, never
+//! The commands the association runs against a pretend system, never
 //! touching the real one.
 
 #![allow(

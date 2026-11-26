@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A Kad node for the Java engine's tests of it: a profile folder, a clock the tests move, and a transport and a host
+//! Kad node test harness: a profile folder, a test-controlled clock, and a mock transport and host
 //! that remember what the node sent and asked for.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used, clippy::arithmetic_side_effects)]

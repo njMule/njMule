@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's TrafficTest, under its names. The counters are shared by the whole process, so the tests look at
+//! The counters are shared by the whole process, so the tests look at
 //! what they grew by.
 
 #![allow(clippy::arithmetic_side_effects)]

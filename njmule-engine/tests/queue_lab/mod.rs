@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! A download queue over a temp directory for the Java engine's tests of it: its disk work brought back and its
+//! Download queue test harness over a temp directory: its disk work brought back and its
 //! events heard while the test waits.
 
 #![allow(dead_code, clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::arithmetic_side_effects)]

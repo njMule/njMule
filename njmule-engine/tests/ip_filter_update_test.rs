@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's IpFilterUpdateTest, under its names: format detection of IP filter lists regardless of URL name.
+//! Format detection of IP filter lists regardless of URL name.
 
 use njmule_engine::engine::ip_filter_lists;
 use njmule_engine::persist::format::ip_filter_dat::Range;

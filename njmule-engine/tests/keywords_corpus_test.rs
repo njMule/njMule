@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! The Java engine's answers in `golden/kad-keywords.jsonl`, given again: the keywords Kad publishes a name under with
+//! Replays `golden/kad-keywords.jsonl`: the keywords Kad publishes a name under with
 //! their ids, and every UTF-16 unit the network's lower case changes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
@@ -13,7 +13,7 @@ const CORPUS: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/golden/kad-keyw
 
 #[test]
 fn should_give_the_recorded_answers() {
-    let text = std::fs::read_to_string(CORPUS).expect("the corpus of the Java engine");
+    let text = std::fs::read_to_string(CORPUS).expect("the golden corpus");
     let mut differences = Vec::new();
     let mut cases = 0;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
@@ -28,7 +28,7 @@ fn should_give_the_recorded_answers() {
     assert!(differences.is_empty(), "{} of {cases} cases differ:\n{}", differences.len(), differences.join("\n"));
 }
 
-// What the Java engine's KeywordsCorpusTest answers for the input of `recorded`.
+// Expected answer from the golden corpus for the input of `recorded`.
 fn answered(recorded: &Value) -> Value {
     let mut answer = Map::new();
     answer.insert("kind".into(), recorded["kind"].clone());
