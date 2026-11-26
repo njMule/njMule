@@ -41,8 +41,8 @@ in THIRD-PARTY.txt (generated from njmule-engine/Cargo.lock with
 `cargo about generate about.hbs -o THIRD-PARTY.txt`).
 
     Rust engine crates          mostly Apache License 2.0 OR MIT License
-    (njmule-engine/Cargo.lock:  (with crates under ISC, BSD-3-Clause, 0BSD,
-    tokio, axum, quinn, rustls, Zlib, CC0-1.0, MIT-0, Unicode-3.0, MPL-2.0
+    (njmule-engine/Cargo.lock:  (with crates under ISC, BSD-3-Clause, BSL-1.0,
+    tokio, axum, quinn, rustls, 0BSD, Zlib, CC0-1.0, MIT-0, Unicode-3.0, MPL-2.0
     ring, reqwest, lettre,      and CDLA-Permissive-2.0 for Mozilla's
     serde, clap, tracing,       bundled root CA certificates; full list
     minisign-verify and others) and license texts in THIRD-PARTY.txt)
