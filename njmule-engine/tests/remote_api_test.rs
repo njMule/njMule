@@ -721,14 +721,13 @@ async fn should_refuse_the_old_token_once_the_desktop_window_renewed_it() {
 }
 
 #[tokio::test]
-async fn should_tell_a_guest_neither_the_java_nor_the_system() {
+async fn should_not_tell_a_guest_the_system() {
     let mut api = Api::new();
     api.given_the_api_runs_for_its_callers().await;
 
     api.when_called_as_guest("GET", "/api/v1").await;
 
     api.then_the_status_is(200);
-    api.then_the_body_does_not_contain(r#""java""#);
     api.then_the_body_does_not_contain(r#""system""#);
 }
 

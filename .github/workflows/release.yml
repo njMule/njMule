@@ -36,7 +36,7 @@ jobs:
             - id: version
               name: Read the project version
               run: |
-                  version="$(sed -n 's/^version=//p' gradle.properties)"
+                  version="$(tr -d '\r\n' < VERSION)"
                   if [[ "${GITHUB_REF_TYPE}" == tag && "v${version}" != "${GITHUB_REF_NAME}" ]]; then
                       echo "Tag ${GITHUB_REF_NAME} does not match the version ${version}" >&2
                       exit 1
@@ -44,8 +44,8 @@ jobs:
                   echo "version=${version}" >> "$GITHUB_OUTPUT"
                   echo "numeric=${version%%-*}" >> "$GITHUB_OUTPUT"
 
-    # Third-party crate notices (THIRD-PARTY.txt) and CycloneDX SBOM from the Rust engine's Cargo.lock,
-    # generated once and shared by every package and the draft release.
+    # Third-party crate notices (THIRD-PARTY.txt), CycloneDX SBOM from the Rust engine's Cargo.lock,
+    # and the xtask helper binary (for update-manifest), generated once and shared by every job.
     notices:
         name: third-party notices and SBOM
         needs: version
@@ -63,7 +63,7 @@ jobs:
             - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
               with:
                   tool: cargo-about@0.9.3, cargo-cyclonedx@0.5.10
-            - name: Generate THIRD-PARTY.txt and CycloneDX SBOM
+            - name: Generate THIRD-PARTY.txt, CycloneDX SBOM and xtask
               working-directory: njmule-engine
               run: |
                   mkdir -p ../notices
@@ -73,6 +73,8 @@ jobs:
                       '.metadata.component.version = $v | .metadata.component.purl = (.metadata.component.purl | sub("@0\\.0\\.0"; "@" + $v))' \
                       njmule_bin.cdx.json > "../notices/njmule-${VERSION}-sbom.cdx.json"
                   rm -f njmule_bin.cdx.json
+                  cargo build --manifest-path ../xtask/Cargo.toml --locked --release
+                  cp ../xtask/target/release/xtask ../notices/xtask
                   ls -lh ../notices
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
               with:
@@ -91,13 +93,13 @@ jobs:
             NUMERIC: ${{ needs.version.outputs.numeric }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: |
+                      njmule-ui/package-lock.json
+                      njmule-desktop/package-lock.json
             - name: Install WiX
               shell: pwsh
               run: dotnet tool install --global wix --version 5.0.2
@@ -111,7 +113,9 @@ jobs:
             - name: Build the interface, the desktop window, the service and the engine
               shell: bash
               run: |
-                  ./gradlew :njmule-ui:compress :njmule-desktop:shell :nativeService
+                  cargo xtask ui-compress
+                  cargo xtask desktop-shell
+                  cargo xtask native-service
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
             - name: Gather the programs
               shell: pwsh
@@ -190,11 +194,6 @@ jobs:
               with:
                   name: windows-x64
                   path: dist/
-            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
-            # files Windows does not let it read.
-            - name: Stop Gradle
-              if: always()
-              run: ./gradlew --stop
 
     linux:
         name: linux-${{ matrix.arch }}
@@ -223,10 +222,13 @@ jobs:
             NFPM_SHA256: ${{ matrix.nfpm-sha256 }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: |
+                      njmule-ui/package-lock.json
+                      njmule-desktop/package-lock.json
             - name: Install the web view and nfpm
               run: |
                   sudo apt-get update -qq
@@ -237,9 +239,6 @@ jobs:
                       -o "$RUNNER_TEMP/nfpm.tar.gz" "$NFPM_URL"
                   echo "$NFPM_SHA256  $RUNNER_TEMP/nfpm.tar.gz" | sha256sum -c -
                   tar -C "$RUNNER_TEMP" -xzf "$RUNNER_TEMP/nfpm.tar.gz" nfpm
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
             - name: Install the pinned Rust
               shell: bash
               working-directory: njmule-engine
@@ -249,7 +248,8 @@ jobs:
                   rustup default "$channel"
             - name: Build the interface, the desktop window and the engine
               run: |
-                  ./gradlew :njmule-ui:compress :njmule-desktop:shell
+                  cargo xtask ui-compress
+                  cargo xtask desktop-shell
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
             - name: Smoke test
               run: |
@@ -303,13 +303,11 @@ jobs:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   fetch-depth: 0
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
             - name: Install musl tools and the pinned Rust
               working-directory: njmule-engine
               run: |
@@ -320,7 +318,7 @@ jobs:
                   rustup default "$channel"
             - name: Build the interface and the static executable
               run: |
-                  ./gradlew :njmule-ui:compress
+                  cargo xtask ui-compress
                   CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
                       --locked --release --target x86_64-unknown-linux-musl --bin njmule
             - name: Smoke test
@@ -476,8 +474,8 @@ jobs:
                   provenance: mode=max
                   sbom: true
 
-    # GraalVM has no Windows arm64 build yet: the x64 installer runs there under the system's x64
-    # emulation, which this job checks on an arm64 runner.
+    # Windows arm64 uses the x64 installer under Windows x64 emulation; this job checks it on an
+    # arm64 runner.
     windows-arm64:
         name: windows-arm64 (x64 under emulation)
         needs: [version, windows-x64]
@@ -537,13 +535,13 @@ jobs:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: |
+                      njmule-ui/package-lock.json
+                      njmule-desktop/package-lock.json
             - name: Install the pinned Rust
               shell: bash
               working-directory: njmule-engine
@@ -553,7 +551,8 @@ jobs:
                   rustup default "$channel"
             - name: Build the interface, the desktop window and the engine
               run: |
-                  ./gradlew :njmule-ui:compress :njmule-desktop:shell
+                  cargo xtask ui-compress
+                  cargo xtask desktop-shell
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
             - name: Fetch third-party notices
               env:
@@ -593,7 +592,7 @@ jobs:
     e2e-sign:
         name: e2e update information
         if: github.event_name == 'workflow_dispatch'
-        needs: [version, windows-x64, linux, macos-arm64]
+        needs: [version, notices, windows-x64, linux, macos-arm64]
         runs-on: ubuntu-24.04
         permissions:
             actions: read
@@ -602,16 +601,14 @@ jobs:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
-              with:
-                  distribution: temurin
-                  java-version: "25"
             - name: Collect the packages
               env:
                   GH_TOKEN: ${{ github.token }}
               run: |
                   gh run download "${GITHUB_RUN_ID}" --dir packages --name windows-x64 --name linux-x64 \
                       --name macos-arm64
+                  gh run download "${GITHUB_RUN_ID}" --dir "$RUNNER_TEMP/notices" --name notices
+                  chmod +x "$RUNNER_TEMP/notices/xtask"
                   mkdir -p dist
                   find packages -type f -exec cp {} dist/ \;
             - name: Sign the update information with a key of this run
@@ -621,7 +618,7 @@ jobs:
                   minisign -G -W -p "$RUNNER_TEMP/e2e.pub" -s "$RUNNER_TEMP/e2e.key"
                   echo "The end-to-end test of the updates." > "$RUNNER_TEMP/notes.md"
                   mkdir -p e2e
-                  java tools/UpdateManifest.java dist "${VERSION}" "$RUNNER_TEMP/notes.md" > e2e/njmule-update.json
+                  "$RUNNER_TEMP/notices/xtask" update-manifest dist "${VERSION}" "$RUNNER_TEMP/notes.md" > e2e/njmule-update.json
                   minisign -S -s "$RUNNER_TEMP/e2e.key" -m e2e/njmule-update.json -t "njmule ${VERSION} e2e"
                   tail -n 1 "$RUNNER_TEMP/e2e.pub" > e2e/e2e.pub
             - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -873,10 +870,6 @@ jobs:
             VERSION: ${{ needs.version.outputs.version }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
-              with:
-                  distribution: temurin
-                  java-version: "25"
             - name: Collect the packages
               env:
                   GH_TOKEN: ${{ github.token }}
@@ -885,6 +878,7 @@ jobs:
                   gh run download "${GITHUB_RUN_ID}" --dir packages --name windows-x64 --name linux-x64 \
                       --name linux-arm64 --name macos-arm64 --name synology-x86_64
                   gh run download "${GITHUB_RUN_ID}" --dir "$RUNNER_TEMP/notices" --name notices
+                  chmod +x "$RUNNER_TEMP/notices/xtask"
                   mkdir -p dist
                   find packages -type f -exec cp {} dist/ \;
                   # The ~ of a test version's deb and rpm names (dpkg and rpm read the version inside):
@@ -898,7 +892,7 @@ jobs:
                   awk -v v="${VERSION}" \
                       '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' \
                       CHANGELOG.md > notes.md
-                  java tools/UpdateManifest.java dist "${VERSION}" notes.md > dist/njmule-update.json
+                  "$RUNNER_TEMP/notices/xtask" update-manifest dist "${VERSION}" notes.md > dist/njmule-update.json
                   (cd dist && sha256sum -- * > SHA256SUMS)
             # In the release's notes only, after the update information took them: VirusTotal finds
             # a report by the file's SHA-256, the same as in SHA256SUMS.

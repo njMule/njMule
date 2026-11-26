@@ -11,8 +11,7 @@ conventions that lead there and what the workflow does.
 ## Versioning
 
 njMule follows [Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), with one source of
-truth: `version` in
-[`gradle.properties`](https://github.com/njMule/njMule/blob/main/gradle.properties).
+truth: [`VERSION`](https://github.com/njMule/njMule/blob/main/VERSION).
 
 - `0.y.z` while the features are being completed, `1.0.0` at feature parity.
 - Pre-releases carry `-alpha.N`, `-beta.N` or `-rc.N`.
@@ -71,8 +70,7 @@ ever needed, are named `release/vX.Y.Z`.
 ## Tags
 
 A release tag is **annotated** and named `vX.Y.Z` (with its pre-release part, such as
-`v0.1.0-beta.1`), and it must match `version` in `gradle.properties`: the workflow's first job stops
-the release otherwise.
+`v0.1.0-beta.1`), and it must match `VERSION`: the workflow's first job stops the release otherwise.
 
 ```bash
 git tag -a v1.2.3 -m "njMule 1.2.3"
@@ -99,7 +97,7 @@ For a tag, the `release` job collects:
 - the packages: the Windows MSI and zip, the Linux deb, rpm and `.tar.xz` for x64 and arm64, the
   static Linux archive, the macOS disk image and the Synology package;
 - `njmule-<version>-sbom.cdx.json`, the CycloneDX software bill of materials;
-- `njmule-update.json`, made by `tools/UpdateManifest.java`: the version, the release notes from
+- `njmule-update.json`, made by `cargo xtask update-manifest`: the version, the release notes from
   the changelog, whether it is critical, and every package with its platform, kind, size and SHA-256;
 - `SHA256SUMS`, the checksums of all the files;
 - minisign signatures of `njmule-update.json` and `SHA256SUMS`;
@@ -164,7 +162,7 @@ A release goes through a pull request like every other change, since `main` is p
 1. On a branch from the latest `main`, turn `[Unreleased]` in `CHANGELOG.md` into
    `## [X.Y.Z] - <date>` under a new, empty `## [Unreleased]`; put security fixes under
    `### Security`.
-2. Set `version` in `gradle.properties` to the new version, commit both with the scope `release`
+2. Set `VERSION` to the new version, commit both with the scope `release`
    (`chore(release): X.Y.Z`), and open the pull request.
 3. Optionally, run the release workflow by hand on that branch, to see the packages and the update
    tests pass before you tag.

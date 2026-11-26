@@ -100,14 +100,14 @@ The documentation's sources are in [`website/`](website); its text is under CC B
 
 ## Building from source
 
-With [rustup](https://rustup.rs/) (which installs the pinned Rust toolchain on first use) and a JDK
-25 for the Gradle Wrapper that drives the Vue interface and Tauri shell:
+With [rustup](https://rustup.rs/) (which installs the pinned Rust toolchain on first use) and
+Node.js 24 (for the Vue interface and Tauri CLI):
 
 ```bash
 cargo test --manifest-path njmule-engine/Cargo.toml --locked        # test the Rust engine
 cargo run --manifest-path njmule-engine/Cargo.toml -- --help        # the command line
-./gradlew :njmule-ui:build                                          # build and test the interface
-./gradlew :njmule-desktop:shell                                     # the desktop window
+cargo xtask ui                                                      # build and test the interface
+cargo xtask desktop-shell                                           # the desktop window
 ```
 
 [Building njMule](https://njmule.github.io/njMule/developer/building) explains the prerequisites,

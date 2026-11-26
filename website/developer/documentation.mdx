@@ -1,13 +1,13 @@
 ---
 title: Documentation
-description: How this documentation site is built with Docusaurus and Gradle, where its screenshots and generated pages come from, how to preview it, the rules for writing pages, and how it is published.
+description: How this documentation site is built with Docusaurus and cargo xtask, where its screenshots and generated pages come from, how to preview it, the rules for writing pages, and how it is published.
 ---
 
 This site is a [Docusaurus](https://docusaurus.io/) 3.10 project in the repository's `website/`
-folder. Gradle builds it like the rest of njMule: it takes the screenshots of the interface on a
-demo engine's example data, prints
-the command line's help, generates the API reference from the OpenAPI document, and fails on any
-broken link. Change a page in the same branch as the user-visible change it describes.
+folder. `cargo xtask` builds it: it takes the screenshots of the interface on a demo engine's
+example data, prints the command line's help, generates the API reference from the OpenAPI
+document, and fails on any broken link. Change a page in the same branch as the user-visible change
+it describes.
 
 ## Layout
 
@@ -23,7 +23,7 @@ broken link. Change a page in the same branch as the user-visible change it desc
 | `website/static/` | static files served as they are |
 | `sidebars.ts`, `sidebarsDeveloper.ts` | the order of the pages of each guide; a new page must be listed there |
 | `docusaurus.config.ts` | the site: address, plugins, navigation, footer, search |
-| `build.gradle.kts`, `package.json`, `package-lock.json` | the Gradle tasks and the npm packages |
+| `package.json`, `package-lock.json` | the npm packages and scripts |
 
 Everything the build generates lands in `website/build/`, under `.gitignore` like the generated
 folders above. Screenshots are never committed.
@@ -31,40 +31,35 @@ folders above. Screenshots are never committed.
 ## Building the site
 
 ```bash
-./gradlew :website:site
+cargo xtask site
 ```
 
-The site lands in `website/build/site`. The task runs, in order of need:
+The site lands in `website/build/site`. The command runs, in order:
 
-1. **`:website:engineTools`** and **`:website:webScreenshots`**: `:website:engineTools` builds
-   `:njmule-ui:compress`, the `njmule` executable and the `web_capture_demo` example from
-   `njmule-engine`. `scripts/capture-web.mjs` starts `web_capture_demo`
+1. **Interface & Rust tools**: builds `njmule-ui/build/shipped` (`ui-compress`), the `njmule`
+   executable and the `web_capture_demo` example from `njmule-engine`.
+2. **CLI help**: runs `njmule --help` and `njmule --remote help` into `website/build/cli-help/`.
+3. **API reference (`npm run api`)**: `docusaurus gen-api-docs` turns
+   `njmule-engine/assets/openapi.yaml` into the pages of `developer/api/reference/`.
+4. **Screenshots (`scripts/capture-web.mjs`)**: starts `web_capture_demo`
    ([Testing](testing.mdx#pictures-of-the-interface)), signs in, and pictures the interface at
    1280×800 with twice the pixels: each place, menu and dialog the pages show, the options pages, a
    phone-sized page and a guest's page, in light and in dark, and the transfers in forced colours.
-   The pictures of the desktop app's pages come from the same interface in the browser. They land in
-   `website/build/web-captures/`, in the sets `light`, `dark` and `contrast`. The script drives the
-   Chrome or Edge already installed on your computer through Playwright, which downloads no browser;
-   set `NJMULE_CAPTURE_BROWSER` to the path of another Chromium-based browser. A step that fails is
-   reported as "not pictured" and the others go on.
-2. **`:website:cliHelp`**: runs the built `njmule` executable to capture `--help` and `--remote help`.
-3. **`:website:prepare`**: `scripts/prepare.mjs --strict` copies the brand's images and the
-   screenshots the pages name into `website/build/generated/static/img`, and writes the partials of
-   `_generated/`: the repository's pages without their license comment and title, with their links
-   to repository files made absolute, and the command line's help as text blocks. With `--strict`, a
-   picture a page names but the build did not make fails the build.
-4. **`:website:apiDocs`**: `docusaurus gen-api-docs` turns `njmule-engine/assets/openapi.yaml` into
-   the pages of `developer/api/reference/`.
-5. `docusaurus build`, with the version of `gradle.properties` shown in the footer.
+   They land in `website/build/web-captures/`, in the sets `light`, `dark` and `contrast`. The
+   script drives the Chrome or Edge already installed on your computer through Playwright; set
+   `NJMULE_CAPTURE_BROWSER` to the path of another Chromium-based browser.
+5. **Partials (`scripts/prepare.mjs --strict`)**: copies the brand's images and the screenshots
+   the pages name into `website/build/generated/static/img`, and writes the partials of
+   `_generated/`. With `--strict`, any missing screenshot fails the build.
+6. **`docusaurus build`**, with the version from `VERSION` shown in the footer.
 
-The build fails on a broken link, a broken anchor or a missing image. The site is not part of
-`./gradlew build`.
+The build fails on a broken link, a broken anchor or a missing image.
 
 To check the formatting (Prettier) and the types (TypeScript) of the site's own code, in `src/`,
 `scripts/` and the configuration files:
 
 ```bash
-./gradlew :website:siteCheck
+cargo xtask site-check
 ```
 
 ## Previewing pages
@@ -72,7 +67,7 @@ To check the formatting (Prettier) and the types (TypeScript) of the site's own 
 1. Put the generated files in place once, and again after you change what they come from:
 
    ```bash
-   ./gradlew :website:prepare :website:apiDocs
+   cargo xtask site-prepare
    ```
 
 2. Start the development server from `website/`:
@@ -81,12 +76,11 @@ To check the formatting (Prettier) and the types (TypeScript) of the site's own 
    npm start
    ```
 
-   It opens the site and reloads a page as you save it. Use the Node.js Gradle downloaded
-   (`website/.gradle/nodejs/node-v…/`) or your own Node.js 24 or newer.
+   It opens the site and reloads a page as you save it (requires Node.js 24 or newer).
 
-For a quick look at text alone, run `./gradlew :website:apiDocs` once, then `npm run prepare-site`
-in `website/`: it writes the partials without the pictures and the command line's help, and a
-missing picture is only a warning. `npm run serve` serves a built site from `website/build/site`.
+For a quick look at text alone, run `npm run api` and `npm run prepare-site` in `website/`: it
+writes the partials without the pictures and the command line's help, and a missing picture is only
+a warning. `npm run serve` serves a built site from `website/build/site`.
 
 ## Writing pages
 
@@ -185,18 +179,18 @@ page says so too.
 ## Deployment
 
 The `Documentation` workflow (`.github/workflows/docs.yml`) builds the site with
-`./gradlew :website:siteCheck :website:site` on an Ubuntu runner, the pictures coming from the
+`cargo xtask site-check` and `cargo xtask site` on an Ubuntu runner, the pictures coming from the
 interface on the demo engine in the runner's Chrome:
 
 - **It checks** every pull request that changes the site, the interface, the demo engine, the API
-  document, the version in `gradle.properties` (so the release's pull request checks the site its
-  tag will publish) or the workflow itself. A merge into `main` does not build it again.
+  document, `VERSION` (so the release's pull request checks the site its tag will publish), `xtask/`
+  or the workflow itself. A merge into `main` does not build it again.
 - **It publishes** on GitHub Pages only when asked: a manual run with **deploy** ticked, or the push
-  of a `v*` tag, which publishes the site of every release.
+  of a stable `v*` tag, which publishes the site of every release.
 
-The download links of the Getting started pages and the Docker image's tag are those of `version` in
-`gradle.properties` (the `<Downloads>`, `<DockerImage>` and `<Version>` components of
-`src/components/Release.tsx`), so the site a tag publishes links that release's files.
+The download links of the Getting started pages and the Docker image's tag are those of `VERSION`
+(the `<Downloads>`, `<DockerImage>` and `<Version>` components of `src/components/Release.tsx`), so
+the site a tag publishes links that release's files.
 
 The site's address is `https://njmule.github.io/njMule/`. One publication runs at a time; a newer one
 waits for it. Each page links to its source on GitHub (**Edit this page**).

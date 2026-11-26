@@ -46,28 +46,26 @@ jobs:
                       ui:
                           - 'njmule-ui/**'
                           - 'njmule-engine/assets/openapi.yaml'
-                          - 'gradle/**'
-                          - 'gradle.properties'
-                          - 'settings.gradle.kts'
-                          - 'build.gradle.kts'
-                          - '*.lockfile'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - '.github/workflows/build.yml'
                       desktop:
                           - 'njmule-desktop/**'
                           - 'njmule-ui/**'
                           - 'njmule-engine/assets/openapi.yaml'
                           - 'branding/generated/**'
-                          - 'gradle/**'
-                          - 'gradle.properties'
-                          - 'settings.gradle.kts'
-                          - 'build.gradle.kts'
-                          - '*.lockfile'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - '.github/workflows/build.yml'
                       engine:
                           - 'njmule-engine/**'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/njmule-32.png'
-                          - 'gradle.properties'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - 'sonar-project.properties'
                           - '.github/workflows/build.yml'
                       windows:
@@ -76,11 +74,9 @@ jobs:
                           - 'packaging/windows/**'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/**'
-                          - 'gradle/**'
-                          - 'gradle.properties'
-                          - 'settings.gradle.kts'
-                          - 'build.gradle.kts'
-                          - '*.lockfile'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - '.github/scripts/windows-service-test.ps1'
                           - '.github/workflows/build.yml'
                       macos:
@@ -88,11 +84,9 @@ jobs:
                           - 'njmule-ui/**'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/njmule-32.png'
-                          - 'gradle/**'
-                          - 'gradle.properties'
-                          - 'settings.gradle.kts'
-                          - 'build.gradle.kts'
-                          - '*.lockfile'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - '.github/workflows/build.yml'
                       synology:
                           - 'njmule-engine/**'
@@ -100,16 +94,14 @@ jobs:
                           - 'packaging/synology/**'
                           - 'branding/njmule-icon.svg'
                           - 'branding/generated/**'
-                          - 'gradle/**'
-                          - 'gradle.properties'
-                          - 'settings.gradle.kts'
-                          - 'build.gradle.kts'
-                          - '*.lockfile'
+                          - 'VERSION'
+                          - 'xtask/**'
+                          - '.cargo/**'
                           - '.github/workflows/build.yml'
                       workflows:
                           - '.github/workflows/**'
 
-    # The Vue user interface (type-check, Vite bundle, Vitest, Prettier) and Gradle's root tools.
+    # The Vue user interface (API types, vue-tsc, Vite bundle, Vitest, Prettier, translations, flags, site, compress).
     ui:
         name: interface (ui)
         needs: changes
@@ -117,16 +109,19 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache-jdk: true
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
+            - name: Install the pinned Rust
+              working-directory: xtask
+              run: |
+                  channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
+                  rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             - name: Build, lint and test the interface
-              run: ./gradlew :njmule-ui:build :iconTools
+              run: cargo xtask ui
 
     # The desktop window's shell, in Rust, on each system it is packaged for: formatted, linted and tested, with the
     # toolchain src-tauri/rust-toolchain.toml pins and the interface it embeds built first.
@@ -144,16 +139,11 @@ jobs:
                 shell: bash
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache-jdk: true
-                  cache-read-only: true
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
             - name: Install the web view's libraries
               if: runner.os == 'Linux'
               run: |
@@ -165,21 +155,17 @@ jobs:
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal --component rustfmt,clippy
+                  rustup default "$channel"
             - name: Build the interface it embeds
-              run: ./gradlew :njmule-ui:site
+              run: cargo xtask ui-site
             - name: Format, lint and test
               working-directory: njmule-desktop/src-tauri
               run: |
                   cargo fmt --check
                   cargo clippy --locked --release --all-targets -- -D warnings
                   cargo test --locked --release
-            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
-            # files Windows does not let it read.
-            - name: Stop Gradle
-              if: always() && runner.os == 'Windows'
-              run: ./gradlew --stop
 
-    # The Rust engine: formatted, linted, unit + integration + end-to-end tests with coverage, crate policy,
+    # The Rust engine and xtask: formatted, linted, unit + integration + end-to-end tests with coverage, crate policy,
     # third-party notices, SBOM and SonarQube Cloud analysis.
     engine:
         name: rust engine + SonarQube Cloud
@@ -204,6 +190,12 @@ jobs:
             - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
               with:
                   tool: cargo-llvm-cov@0.9.1, cargo-about@0.9.3, cargo-cyclonedx@0.5.10
+            - name: Format, lint and test xtask
+              working-directory: xtask
+              run: |
+                  cargo fmt --check
+                  cargo clippy --locked --all-targets -- -D warnings
+                  cargo test --locked
             - name: Format, lint and test with coverage
               run: |
                   cargo fmt --check
@@ -236,14 +228,11 @@ jobs:
         runs-on: windows-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache-jdk: true
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
             - name: Install the pinned Rust
               shell: bash
               working-directory: njmule-engine
@@ -254,7 +243,8 @@ jobs:
             - name: Build the interface, the engine and the service
               shell: bash
               run: |
-                  ./gradlew :njmule-ui:compress :nativeService
+                  cargo xtask ui-compress
+                  cargo xtask native-service
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
             - name: Smoke test
               shell: pwsh
@@ -270,12 +260,6 @@ jobs:
               run: |
                   Copy-Item build/windows/njmule-service.exe njmule-engine/target/release/
                   ./.github/scripts/windows-service-test.ps1 njmule-engine/target/release/njmule.exe
-            # The basic cache provider saves Gradle's user home without stopping the daemon, whose lock
-            # files Windows does not let it read.
-            - name: Stop Gradle
-              if: always()
-              shell: bash
-              run: ./gradlew --stop
 
     # macOS is built and smoke-tested here too: the release would otherwise be the first to try it.
     macos:
@@ -285,14 +269,11 @@ jobs:
         runs-on: macos-latest
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache-jdk: true
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
             - name: Install the pinned Rust
               working-directory: njmule-engine
               run: |
@@ -301,7 +282,7 @@ jobs:
                   rustup default "$channel"
             - name: Build the interface and the engine
               run: |
-                  ./gradlew :njmule-ui:compress
+                  cargo xtask ui-compress
                   cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule
             - name: Smoke test
               run: |
@@ -316,16 +297,11 @@ jobs:
         runs-on: ubuntu-24.04
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-                  cache-jdk: true
-                  cache-read-only: true
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: njmule-ui/package-lock.json
             - name: Install musl tools and the pinned Rust
               working-directory: njmule-engine
               run: |
@@ -336,7 +312,7 @@ jobs:
                   rustup default "$channel"
             - name: Build the interface and the static executable
               run: |
-                  ./gradlew :njmule-ui:compress
+                  cargo xtask ui-compress
                   CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
                       --locked --release --target x86_64-unknown-linux-musl --bin njmule
             # Static, or it would not start on DSM's old glibc.

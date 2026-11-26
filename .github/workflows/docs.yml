@@ -15,8 +15,9 @@ on:
             - "njmule-engine/examples/web_capture_demo.rs"
             - "njmule-engine/src/app/**"
             - "njmule-engine/assets/openapi.yaml"
-            # The version: the release's pull request checks the site its tag will publish.
-            - "gradle.properties"
+            # The version and Cargo build tasks.
+            - "VERSION"
+            - "xtask/**"
             - ".github/workflows/docs.yml"
     workflow_dispatch:
         inputs:
@@ -41,24 +42,25 @@ jobs:
             deploy: ${{ steps.publish.outputs.deploy }}
         steps:
             - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-            - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+            - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  distribution: temurin
-                  java-version: "25"
-            # The Build workflow's verify job writes the Gradle User Home cache.
-            - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
-              with:
-                  cache-provider: basic
-                  cache-read-only: true
+                  node-version: "24.22.1"
+                  cache: npm
+                  cache-dependency-path: |
+                      njmule-ui/package-lock.json
+                      website/package-lock.json
             - name: Install the pinned Rust
               working-directory: njmule-engine
               run: |
                   channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)
                   rustup toolchain install "$channel" --profile minimal
+                  rustup default "$channel"
             # The pictures come from the interface on a demo engine in the runner's own Chrome; the site fails on
             # a broken link or a missing picture.
             - name: Build the site
-              run: ./gradlew :website:siteCheck :website:site
+              run: |
+                  cargo xtask site-check
+                  cargo xtask site
             - name: Should it be published
               id: publish
               env:

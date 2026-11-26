@@ -54,8 +54,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   linear history, no force push or deletion, no bypass; no approval is required, the maintainer
   being the only reviewer. The squash commit takes the PR title and the commits' messages, their
   `Signed-off-by` lines included; merged branches are deleted.
-- Dependabot's pull requests are completed on their own branch (locks and checksums rewritten when
-  Gradle versions change, see Tooling) and squash-merged like the others.
+- Dependabot's pull requests are completed on their own branch when needed and squash-merged like
+  the others.
 
 ### Branch names
 
@@ -70,18 +70,18 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Versioning
 
-- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `version` in `gradle.properties`
-  (`njmule-engine/build.rs` and `njmule-desktop/build.gradle.kts` read it from there).
+- [Semantic Versioning 2.0.0](https://semver.org/). Single source: `VERSION` at the repository root
+  (`njmule-engine/build.rs`, `xtask`, `release.yml`, `build-spk.sh` and `website/` read it).
 - `0.y.z` during pre-1.0 development, pre-releases `-alpha.N` / `-beta.N` / `-rc.N`, `1.0.0` at
   feature parity.
 - Tags are annotated: `vX.Y.Z`. `CHANGELOG.md` follows
   [Keep a Changelog](https://keepachangelog.com/): each user-visible change adds a short line under
   `[Unreleased]` (Added, Changed, Fixed, Security).
-- A release: a pull request sets `version` and turns `[Unreleased]` into `[X.Y.Z] - <date>` under a
-  new empty `[Unreleased]`; once merged, the annotated tag `vX.Y.Z` on that commit of `main` runs
-  `release.yml`, whose draft release waits for the maintainer's approval of the `release`
-  environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the release
-  under "Released" and its completed "Next" items ticked.
+- A release: a pull request updates `VERSION` and turns `[Unreleased]` into `[X.Y.Z] - <date>`
+  under a new empty `[Unreleased]`; once merged, the annotated tag `vX.Y.Z` on that commit of
+  `main` runs `release.yml`, whose draft release waits for the maintainer's approval of the
+  `release` environment and is then published by hand. Then the pinned Roadmap issue (#38) gets the
+  release under "Released" and its completed "Next" items ticked.
 - The local `release` skill (kept local like `docs/` and never committed) automates all of it,
   with a manual run of `release.yml` on the release branch before the tag, once the maintainer asks
   for a release of a version: that request is their approval of every step, including the `release`
@@ -92,13 +92,14 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 | Path | Content |
 |---|---|
 | `njmule-engine` | the Rust engine, CLI, web interface (Axum) and remote-control API (`Cargo.toml`, `src/`, `assets/`, `tests/`, `examples/web_capture_demo.rs`) |
-| `njmule-ui` | the single interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; embedded by `njmule-engine` (gzipped) and `njmule-desktop` (uncompressed); holds the translation bundles (`i18n/`) and flags (`flags/`) |
+| `njmule-ui` | the single interface of the desktop window and the web interface (Vue 3, TypeScript, Vite, Reka UI, TanStack Table/Virtual); reaches njMule only through the remote-control API; embedded by `njmule-engine` (gzipped) and `njmule-desktop` (uncompressed); holds the translation bundles (`i18n/`), flags (`flags/`) and asset builder (`scripts/build-assets.mjs`) |
 | `njmule-desktop` | the desktop window: a Tauri 2 shell (Rust, `src-tauri/`) that starts the `njmule` executable with a control endpoint and shows `njmule-ui` |
+| `xtask` | Cargo build tasks (`cargo xtask <command>`) orchestrating the UI, desktop shell, Windows service host, documentation website, release manifest and translation converter |
 | `website/` | documentation website (Docusaurus): `docs/` user guide, `developer/` developer guide, published on GitHub Pages |
-| `gradle/` | `libs.versions.toml` (Node.js and JSVG versions), `verification-metadata.xml` and the Gradle Wrapper |
 | `packaging/` | Windows installer (WiX 5) and Windows service host (`packaging/windows/service.c`), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology DSM package |
 | `branding/` | original artwork (master SVG + generated PNG/ICO/ICNS) — never reuse eMule assets |
-| `tools/` | single-file helper programs (`IconGen.java`, `FlagGen.java`, `Rc2Properties.java`, `SocialPreview.java`, `UpdateManifest.java`), golden vector generators (`tools/golden/`) and the e2e update server (`tools/e2e-update-server.sh`) |
+| `tools/` | helper scripts (`render-assets.mjs`, `e2e-update-server.sh`) and golden vector generators (`tools/golden/`) |
+| `VERSION` | single source of the project version |
 | `docs/` (local, git-ignored) | `PLAN.md`, `ARCHITECTURE.md`, `PROTOCOL.md`, `FORMATS.md`, `adr/` |
 
 ## Tooling and commands
@@ -116,8 +117,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `Cargo.toml` forbids `unsafe_code` and denies `unwrap_used`, `expect_used`, `panic`,
   `indexing_slicing` and `arithmetic_side_effects` in production code. Release builds keep
   `overflow-checks = true`, thin LTO and stripped symbols. To embed the compressed web UI in a
-  release binary, build `:njmule-ui:compress` first (`./gradlew :njmule-ui:compress`, then
-  `cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule`).
+  release binary, run `cargo xtask ui-compress` first, then
+  `cargo build --manifest-path njmule-engine/Cargo.toml --locked --release --bin njmule`.
 - **Engine tests and coverage**: the integration tests of `njmule-engine/tests/` are modules of one
   test binary (`tests/main.rs`) so the engine is linked once; declare every new test file there
   (`mod foo_test;`) — `suite_modules_test` fails on any file left out. Run one file with
@@ -129,52 +130,36 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   - `cargo about generate about.hbs -o target/THIRD-PARTY.txt`
   - `cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all`
 - **Static Linux build (musl)**: for Synology DSM and `linux-x64-static` (no system glibc needed),
-  install `musl-tools` and `rustup target add x86_64-unknown-linux-musl`, build `:njmule-ui:compress`,
-  then run:
+  install `musl-tools` and `rustup target add x86_64-unknown-linux-musl`, run
+  `cargo xtask ui-compress`, then:
 
   ```bash
   CC_x86_64_unknown_linux_musl=musl-gcc cargo build --manifest-path njmule-engine/Cargo.toml \
       --locked --release --target x86_64-unknown-linux-musl --bin njmule
   ```
 
-- **Interface (`njmule-ui`)**: Gradle (JDK 25) downloads the pinned Node.js (`nodejs` in
-  `gradle/libs.versions.toml`, checked in `gradle/verification-metadata.xml` for all five platforms)
-  and runs `npm ci` from `package-lock.json` without install scripts (`.npmrc`).
-  `./gradlew :njmule-ui:build` runs type generation from `njmule-engine/assets/openapi.yaml`
-  (`npm run api`), `vue-tsc`, Vite build (`bundle`), Vitest (`unitTest`), Prettier (`formatCheck`,
-  fix with `npm run format` in `njmule-ui/`), `site` and `compress`. Its texts are the translation
-  keys in `i18n/` (`t('IDS_…')`, `t('nj.…')`), converted to JSON at build time; only literal keys
-  are found. A task that runs `npm ci` empties `node_modules`: stop a Vite dev server first.
-- **Desktop window (`njmule-desktop`)**: pinned Rust in `njmule-desktop/src-tauri/rust-toolchain.toml`;
-  the Tauri CLI comes from npm. `./gradlew :njmule-desktop:shell` builds
-  `njmule-desktop/src-tauri/target/release/njmule-gui(.exe)`, which starts the `njmule(.exe)`
-  executable beside it (or on `PATH`) and shows `njmule-ui`. In `njmule-desktop/src-tauri/`:
-  `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`,
-  `cargo test --locked --release` (after `./gradlew :njmule-ui:site`).
-- **Windows service host**: `./gradlew nativeService` compiles `packaging/windows/service.c` with
-  Visual Studio Build Tools into `build/windows/njmule-service.exe`.
-- **Gradle locking and verification**: every Gradle dependency (`libs.versions.toml`) is locked in
-  `gradle.lockfile` / `buildscript-gradle.lockfile` / `settings-gradle.lockfile` and verified by
-  SHA-256 in `gradle/verification-metadata.xml` (including all five Node.js platform archives).
-  After changing a Gradle or Node.js version, rewrite both (without `--refresh-dependencies`, Gradle
-  can omit cached parent POMs and break CI):
-
-  ```bash
-  ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
-      --write-locks :iconTools :njmule-ui:nodeSetup :njmule-desktop:nodeSetup :website:nodeSetup
-  ```
-
-  Then remove stale entries and keep all five `org.nodejs` platform checksums from Node.js's
-  `SHASUMS256.txt`.
-- **Documentation website (`website/`, Docusaurus)**: `./gradlew :website:site` →
-  `website/build/site` (builds `njmule` and `examples/web_capture_demo` via `:website:engineTools`,
-  captures screenshots with Chrome or Edge through `website/scripts/capture-web.mjs`, captures
-  `--help` and `--remote help` via `:website:cliHelp`, and generates the API reference from
-  `njmule-engine/assets/openapi.yaml`); `./gradlew :website:siteCheck` checks Prettier and
-  TypeScript. Preview: `./gradlew :website:prepare`, then `npm start` in `website/`. Pages are MDX
-  in English, text under CC BY-SA 4.0; screenshots are never committed (`<Screenshot id="…">`). A
-  user-visible change updates its page in the same branch. `.github/workflows/docs.yml` checks PRs
-  and publishes on GitHub Pages only on a manual run with `deploy` or a `v*` tag.
+- **Cargo build tasks (`cargo xtask`)**: defined in `xtask/` and aliased in `.cargo/config.toml`
+  (requires Node.js 24 on `PATH` for UI/desktop/website tasks):
+  - `cargo xtask ui`: runs `npm ci` (if needed), API type generation from
+    `njmule-engine/assets/openapi.yaml`, `vue-tsc`, Vite build, Vitest, Prettier (`format` with
+    `npm run format` in `njmule-ui/`), translations JSON, flags, `build/site` and gzipped
+    `build/shipped`.
+  - `cargo xtask ui-site` / `cargo xtask ui-compress`: builds `njmule-ui/build/site` (for Tauri)
+    or `njmule-ui/build/shipped` (for `njmule-engine`).
+  - `cargo xtask desktop-shell`: builds `ui-site` and runs `tauri build --no-bundle` in
+    `njmule-desktop/` with `VERSION` → `njmule-desktop/src-tauri/target/release/njmule-gui(.exe)`.
+    In `njmule-desktop/src-tauri/`: `cargo fmt --check`,
+    `cargo clippy --locked --release --all-targets -- -D warnings`, `cargo test --locked --release`.
+  - `cargo xtask native-service`: on Windows, compiles `packaging/windows/service.c` with Visual
+    Studio Build Tools into `build/windows/njmule-service.exe`.
+  - `cargo xtask site-check` / `cargo xtask site-prepare` / `cargo xtask site`: runs Prettier and
+    TypeScript checks, builds `njmule` + `examples/web_capture_demo`, captures CLI help and
+    screenshots with Chrome/Edge via Playwright, generates OpenAPI docs and builds
+    `website/build/site`. Preview: `cargo xtask site-prepare`, then `npm start` in `website/`.
+  - `cargo xtask update-manifest <dist> <version> <notes.md>`: generates `njmule-update.json` for
+    releases.
+  - `cargo xtask rc2properties <english.rc> <out-dir> [<lang>=<.rc>...]`: converts eMule `.rc`
+    string tables into `njmule-ui/i18n/emule*.properties`.
 - **Installers and packages**: every desktop package carries `njmule(.exe)` and `njmule-gui(.exe)`
   (which handles `--apply-update`, `--keep-awake`, `--uninstall-profile`, `--restore-links`,
   `--exit`); Windows adds `njmule-service.exe`. WiX **5** (`dotnet tool install --global wix
@@ -185,7 +170,7 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
   `linux/arm64` (glibc on distroless). All in `.github/workflows/release.yml`.
 - **Static analysis on SonarQube Cloud**: project `njMule_njMule`, organisation `njmule`; CI runs it
   with `sonar.qualitygate.wait=true` so a red quality gate fails `CI result` and blocks merge.
-- **Regenerate icons** (JSVG renders the SVG via `./gradlew iconTools`): see `branding/README.md`.
+- **Regenerate icons / flags / social preview**: `tools/render-assets.mjs` (see `branding/README.md`).
 - **GitHub operations**: use `gh` CLI; remote is `git@github.com:njMule/njMule.git` (SSH).
 - Push, PRs, tags and releases only when the maintainer explicitly asks; asking for a release of a
   version asks for all of its steps (the `release` skill).
@@ -195,8 +180,8 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 ## Licensing rules (GPL-3.0-or-later, REUSE-compliant)
 
 - Every source and text file starts with `SPDX-FileCopyrightText` and `SPDX-License-Identifier`
-  comments; files that cannot (binaries, JSON, images, lock files, golden fixtures) are covered by
-  `REUSE.toml`. `reuse lint` runs in CI on every push.
+  comments; files that cannot (binaries, JSON, images, lock files, golden fixtures, `VERSION`) are
+  covered by `REUSE.toml`. `reuse lint` runs in CI on every push.
 - Third-party code or assets: record origin and license in `REUSE.toml` and `NOTICE`; only
   GPL-3.0-compatible licenses are allowed (`njmule-engine/deny.toml` enforces this for Rust crates).
 - **No graphical asset of eMule** (icons, bitmaps, GIFs, skins, logo) is ever used or derived: all
@@ -207,16 +192,17 @@ All three follow [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 
 ## Code style and formatting
 
-- **Rust (`njmule-engine`, `njmule-desktop/src-tauri`)**: formatted with `cargo fmt` (`rustfmt.toml`:
-  4-space indent, 120 columns) and linted with `cargo clippy --locked --all-targets -- -D warnings`.
+- **Rust (`njmule-engine`, `njmule-desktop/src-tauri`, `xtask`)**: formatted with `cargo fmt`
+  (`rustfmt.toml`: 4-space indent, 120 columns) and linted with
+  `cargo clippy --locked --all-targets -- -D warnings`.
 - **TypeScript / Vue (`njmule-ui`, `website`)**: formatted with Prettier (4 spaces, 120 columns,
   single quotes, LF) and type-checked strictly (`vue-tsc` / `tsc`).
-- **Indentation: 4 spaces** in every file type (Rust, TypeScript, Kotlin build scripts, XML, YAML,
-  scripts); tabs only in Makefiles.
+- **Indentation: 4 spaces** in every file type (Rust, TypeScript, XML, YAML, scripts); tabs only in
+  Makefiles.
 - **Line endings: LF** everywhere; the only exception is `*.cmd`/`*.bat` (CRLF, required by
   `cmd.exe`). `.gitattributes` normalises checkouts.
 - Optional pre-commit hook: `git config core.hooksPath .githooks` (runs `cargo fmt --check` on
-  `njmule-engine` and `njmule-desktop/src-tauri`).
+  `njmule-engine`, `njmule-desktop/src-tauri` and `xtask`).
 - Markdown is wrapped at ~100 columns.
 
 ## Code comments

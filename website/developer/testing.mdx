@@ -131,17 +131,16 @@ The interface's tests live in `njmule-ui/src/__tests__/*.test.ts` and run with V
 against the TypeScript types generated from `njmule-engine/assets/openapi.yaml`:
 
 ```bash
-./gradlew :njmule-ui:unitTest
+cargo xtask ui
 ```
 
-`./gradlew :njmule-ui:build` runs them together with the Vite bundle and Prettier check; in
-`njmule-ui/`, `npm run test` runs them directly. See [Interface](interface.mdx).
+In `njmule-ui/`, `npm run test` runs Vitest directly. See [Interface](interface.mdx).
 
 ## Desktop window tests
 
 The desktop shell has Rust unit tests beside its code in `njmule-desktop/src-tauri/src`: eD2K link
 handoff, launch options, window placement, saved remote connections, and installer/update commands.
-Run them in `njmule-desktop/src-tauri/` once `./gradlew :njmule-ui:site` has built the interface:
+Run them in `njmule-desktop/src-tauri/` once `cargo xtask ui-site` has built the interface:
 
 ```bash
 cargo test --locked --release
@@ -161,7 +160,7 @@ drives the installed Chrome or Edge through Playwright and captures every screen
 light, dark and forced-colours (high contrast) modes:
 
 ```bash
-./gradlew :website:webScreenshots
+cargo xtask site-prepare
 ```
 
 The images land in `website/build/web-captures/`. See [Documentation](documentation.mdx#screenshots).
@@ -173,11 +172,11 @@ request, and once a week on everything:
 
 | Job | What it does |
 |---|---|
-| `interface (ui)` | `./gradlew :njmule-ui:build :iconTools` (API types, `vue-tsc`, Vite, Vitest, Prettier) |
-| `desktop shell` | on Ubuntu, Windows and macOS: `:njmule-ui:site`, then `cargo fmt --check`, Clippy (`-D warnings`) and `cargo test --locked --release` |
-| `rust engine` | on Ubuntu: `cargo fmt --check`, Clippy (`-D warnings`), `cargo llvm-cov --locked --fail-under-lines 70`, `cargo-deny`, `cargo-about` (`THIRD-PARTY.txt`), `cargo-cyclonedx` (SBOM), and SonarQube Cloud analysis |
-| `engine (windows-x64)` | builds `:njmule-ui:compress`, `:nativeService` and `njmule.exe` in release mode, smoke-tests `--version`/`--license`, and runs the real Windows service install/start/stop/uninstall test |
-| `engine (macos-arm64)` | builds `:njmule-ui:compress` and `njmule` in release mode, and smoke-tests `--version`/`--license` |
+| `interface (ui)` | `cargo xtask ui` (API types, `vue-tsc`, Vite, Vitest, Prettier, assets) |
+| `desktop shell` | on Ubuntu, Windows and macOS: `cargo xtask ui-site`, then `cargo fmt --check`, Clippy (`-D warnings`) and `cargo test --locked --release` |
+| `rust engine + SonarQube Cloud` | on Ubuntu: `xtask` checks, then `njmule-engine` `cargo fmt --check`, Clippy (`-D warnings`), `cargo llvm-cov --locked` (≥ 70% lines + LCOV), `cargo-deny`, `cargo-about` (`THIRD-PARTY.txt`), `cargo-cyclonedx` (SBOM), and SonarQube Cloud analysis |
+| `engine (windows-x64)` | builds `ui-compress`, `native-service` and `njmule.exe` in release mode, smoke-tests `--version`/`--license`, and runs the real Windows service install/start/stop/uninstall test |
+| `engine (macos-arm64)` | builds `ui-compress` and `njmule` in release mode, and smoke-tests `--version`/`--license` |
 | `synology package (x86_64)` | builds the static musl `njmule` executable, verifies `ldd` reports no dynamic libraries, smoke-tests it, and builds and verifies the `.spk` package |
 | `REUSE compliance` | `reuse lint` across the repository |
 | `actionlint` | lints GitHub Actions workflows when they change |

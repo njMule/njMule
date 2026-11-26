@@ -1,11 +1,11 @@
 ---
 title: Dependencies
-description: How njMule picks, pins, locks and verifies its Rust crates, npm packages, Gradle plugins and build tools, and how to update them.
+description: How njMule picks, pins, locks and verifies its Rust crates, npm packages and build tools, and how to update them.
 ---
 
 Every dependency njMule uses is pinned, locked and verified. This page explains where versions live,
-which libraries are welcome, how `cargo-deny` and Gradle verification guard them, and the steps
-after changing a version.
+which libraries are welcome, how `cargo-deny` and npm lock files guard them, and the steps after
+changing a version.
 
 ## Choosing a library
 
@@ -13,15 +13,15 @@ after changing a version.
   parser or data structure, check whether the standard library or a maintained open-source library
   already provides it. Write your own only for what is specific to eD2K and Kad, or when nothing
   suitable exists or fits the constraints below, and say why in a comment or the commit message.
-- **A license compatible with the GPL 3.0**: MIT, BSD, Apache-2.0, LGPL, GPL-2.0-or-later and the
-  like. See [Licenses](#licenses) below.
-- **Always the latest stable version.** Check crates.io, npm or Maven Central before adding or
-  bumping a dependency.
+- **A license compatible with the GPL 3.0**: MIT, BSD, Apache-2.0, LGPL, GPL-2.0-or-later, BSL-1.0
+  and the like. See [Licenses](#licenses) below.
+- **Always the latest stable version.** Check crates.io or npm before adding or bumping a
+  dependency.
 
 ## Rust crates
 
-Both the engine (`njmule-engine`) and the desktop shell (`njmule-desktop/src-tauri`) are Cargo
-crates:
+The engine (`njmule-engine`), the desktop shell (`njmule-desktop/src-tauri`) and the build tasks
+(`xtask`) are Cargo crates:
 
 - Rust itself is pinned in each crate's `rust-toolchain.toml`, which `rustup` installs on first use
   with `rustfmt` and Clippy.
@@ -36,8 +36,8 @@ crates:
 ## npm packages
 
 The interface (`njmule-ui`), the desktop window's Tauri CLI (`njmule-desktop`) and this site
-(`website`) are npm projects inside the Gradle build. Gradle downloads the pinned Node.js and runs
-`npm ci`, which installs exactly what `package-lock.json` holds. Their `.npmrc` files set:
+(`website`) are npm projects requiring Node.js 24 LTS. `cargo xtask` runs `npm ci`, which installs
+exactly what `package-lock.json` holds. Their `.npmrc` files set:
 
 | Setting | Effect |
 |---|---|
@@ -46,48 +46,8 @@ The interface (`njmule-ui`), the desktop window's Tauri CLI (`njmule-desktop`) a
 | `engine-strict=true` | npm refuses a Node.js older than the `engines` field asks (24 or newer) |
 | `audit=false`, `fund=false` | no audit or funding requests while installing |
 
-To add or update a package, run npm in that folder (with the Node.js Gradle downloaded into its
-`.gradle/nodejs` folder, or your own Node.js 24 or newer), then commit `package.json` and
-`package-lock.json` together. A task that runs `npm ci` empties `node_modules` first: stop a Vite
-development server before running one.
-
-## Gradle tools and Node.js
-
-[`gradle/libs.versions.toml`](https://github.com/njMule/njMule/blob/main/gradle/libs.versions.toml)
-pins the few Gradle-managed tools: the Node.js LTS version (`nodejs`), JSVG for `tools/IconGen.java`
-(`jsvg`), and the Node Gradle plugin (`node`). Gradle itself is pinned in
-`gradle/wrapper/gradle-wrapper.properties` with its distribution SHA-256.
-
-Two mechanisms ensure reproducible Gradle downloads:
-
-- **Dependency locking**: resolved versions are written to `gradle.lockfile`,
-  `buildscript-gradle.lockfile` and `settings-gradle.lockfile`.
-- **Dependency verification**: every downloaded artifact, POM, module metadata and Node.js archive
-  for all five platforms (Windows x64, Linux x64 and arm64, macOS x64 and arm64) is checked against
-  its SHA-256 in
-  [`gradle/verification-metadata.xml`](https://github.com/njMule/njMule/blob/main/gradle/verification-metadata.xml).
-
-### After changing a Gradle or Node.js version
-
-1. Rewrite the lock files and checksums in one run:
-
-   ```bash
-   ./gradlew --no-configuration-cache --refresh-dependencies --write-verification-metadata sha256 \
-       --write-locks :iconTools :njmule-ui:nodeSetup :njmule-desktop:nodeSetup :website:nodeSetup
-   ```
-
-2. Remove stale entries from `gradle/verification-metadata.xml`.
-3. Review the new checksums before committing them.
-4. After changing `nodejs`, add all five platform archives to `gradle/verification-metadata.xml`
-   using the checksums from Node.js's `SHASUMS256.txt`.
-
-:::warning[Why refresh the dependencies]
-Without `--refresh-dependencies`, Gradle omits parent POMs already in your local cache. Your local
-build still passes, while CI starts with an empty cache and fails on missing checksums.
-:::
-
-Dependabot pull requests for Gradle change versions without running these steps: run the command on
-the PR branch, commit the updated lock files and metadata, and merge once checks pass.
+To add or update a package, run npm in that folder with Node.js 24 or newer, then commit
+`package.json` and `package-lock.json` together.
 
 ## Dependabot
 
@@ -97,16 +57,16 @@ for updates once a week:
 | Ecosystem | Where | Commit prefix |
 |---|---|---|
 | Cargo | `njmule-engine/Cargo.lock` | `chore(deps)` |
+| Cargo | `xtask/Cargo.lock` | `chore(deps)` |
 | Cargo | `njmule-desktop/src-tauri/Cargo.lock`, with the Tauri crates grouped | `chore(deps)` |
 | npm | `njmule-ui/package-lock.json`, with Vue, TanStack and Vite/Vitest grouped | `chore(deps)` |
 | npm | `njmule-desktop/package-lock.json`, the Tauri command line | `chore(deps)` |
 | npm | `website/package-lock.json`, with Docusaurus and OpenAPI docs packages grouped | `docs(deps)` |
-| Gradle | the root build and `gradle/libs.versions.toml` | `chore(deps)` |
 | GitHub Actions | the workflows, whose actions are pinned by commit hash | `ci(deps)` |
 | Docker | the base images of `packaging/docker`, pinned by digest | `build(deps)` |
 
-Downloads made outside Gradle and Cargo (such as `nfpm` in `release.yml`) are also pinned by
-version and verified against their SHA-256 checksums.
+Downloads made outside Cargo and npm (such as `nfpm` in `release.yml`) are also pinned by version
+and verified against their SHA-256 checksums.
 
 ## Licenses
 
@@ -124,7 +84,7 @@ The full lists with versions are generated automatically:
 
 - `THIRD-PARTY.txt`: `cargo about generate about.hbs -o target/THIRD-PARTY.txt` in `njmule-engine`
 - CycloneDX SBOM: `cargo cyclonedx --format json --spec-version 1.6 --describe binaries --no-build-deps --target all` in `njmule-engine`
-- Interface `THIRD-PARTY.md`: generated by Vite during `:njmule-ui:bundle` and served at
+- Interface `THIRD-PARTY.md`: generated by Vite during `npm run build` in `njmule-ui/` and served at
   `/THIRD-PARTY.md`
 
 Test-only libraries and build tools are not distributed.

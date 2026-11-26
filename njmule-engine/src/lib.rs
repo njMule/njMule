@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! njMule's engine in Rust: a port of the Java engine, package by package and with the same names, accepted only
-//! where it answers the golden corpora (`njmule-engine/tests/golden`) alike.
+//! njMule's engine: eD2K and Kad protocol, storage, transfers, remote API and CLI.
 
 pub mod api;
 pub mod app;

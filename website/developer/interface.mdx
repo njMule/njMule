@@ -1,6 +1,6 @@
 ---
 title: Interface
-description: How njMule's interface is built - the Vue 3 app in njmule-ui that the desktop window and the web interface both show - its Gradle tasks, API calls, texts, icons, colours and guest role, and how to work on it.
+description: How njMule's interface is built - the Vue 3 app in njmule-ui that the desktop window and the web interface both show - its Cargo xtask and npm scripts, API calls, texts, icons, colours and guest role, and how to work on it.
 ---
 
 import Tabs from '@theme/Tabs';
@@ -28,7 +28,7 @@ the same way in both.
 
 The project holds the sources in `src/`, the translations in `i18n/`
 ([Translations](translations.mdx)) and the country flags in `flags/`, PNG files made by
-`tools/FlagGen.java`. The sources:
+`tools/render-assets.mjs`. The sources:
 
 | Path | Content |
 |---|---|
@@ -47,26 +47,25 @@ The project holds the sources in `src/`, the translations in `i18n/`
 | `theme.ts`, `styles/` | the theme chosen; `themes.css`, the themes' colours, and `njmule.css`, njMule's tokens and styles |
 | `__tests__/` | the Vitest tests |
 
-## How Gradle builds it
+## How it is built
 
-Gradle downloads the pinned Node.js, checks it against its SHA-256, and runs `npm ci` from
-`package-lock.json` without running any package's install scripts
-([Dependencies](dependencies.mdx#npm-packages)). Then:
+`cargo xtask ui` installs dependencies with `npm ci` from `package-lock.json` without running any
+package's install scripts ([Dependencies](dependencies.mdx#npm-packages)), then runs the npm
+scripts in `njmule-ui/`:
 
-| Task | What it does |
+| Script | What it does |
 |---|---|
-| `:njmule-ui:bundle` | generates the API's types from `openapi.yaml` into `build/generated/api.d.ts`, checks the types (`vue-tsc`) and bundles the interface with Vite into `build/dist`, with `THIRD-PARTY.md`, the licenses of every bundled package |
-| `:njmule-ui:translations` | converts the texts of `i18n/` the interface uses into one JSON file per language, `build/translations/i18n/<tag>.json` |
-| `:njmule-ui:flags` | copies the country flags of `flags/` |
-| `:njmule-ui:compress` | gzips the text files (JavaScript, CSS, SVG, JSON, Markdown) at the highest level into `build/shipped`, for the web interface; the page itself stays as it is, since the server fills it in |
-| `:njmule-ui:site` | puts the bundle, the translations and the flags, uncompressed, in `build/site`, for the desktop shell |
-| `:njmule-ui:unitTest` | runs the Vitest tests (`npm run test`) |
-| `:njmule-ui:formatCheck` | checks the Prettier formatting (`npm run lint`) |
+| `npm run build` | generates the API's types from `openapi.yaml` into `build/generated/api.d.ts`, checks the types (`vue-tsc`) and bundles the interface with Vite into `build/dist`, with `THIRD-PARTY.md`, the licenses of every bundled package |
+| `npm run translations` | converts the texts of `i18n/` the interface uses into one JSON file per language, `build/translations/i18n/<tag>.json` |
+| `npm run flags` | copies the country flags of `flags/` into `build/flags/flags/` |
+| `npm run compress` | gzips the text files (JavaScript, CSS, SVG, JSON, Markdown) at the highest level into `build/shipped`, for the web interface; the page itself stays as it is, since the server fills it in |
+| `npm run site` | puts the bundle, the translations and the flags, uncompressed, in `build/site`, for the desktop shell |
+| `npm run test` | runs the Vitest tests |
+| `npm run lint` | checks the Prettier formatting |
 
-`assemble` runs `compress` and `site`, and `check` runs `unitTest` and `formatCheck`, so
-`./gradlew :njmule-ui:build` covers them all. `njmule-engine` embeds the result of `compress`
-(`njmule-ui/build/shipped`) via `rust-embed`; `:njmule-desktop:shell` embeds the result of `site`,
-which `src-tauri/tauri.conf.json` names as its `frontendDist`.
+`cargo xtask ui` runs all of them; `cargo xtask ui-compress` produces `njmule-ui/build/shipped`
+for `njmule-engine` (`rust-embed`), and `cargo xtask ui-site` produces `njmule-ui/build/site` for
+`cargo xtask desktop-shell` (`src-tauri/tauri.conf.json`'s `frontendDist`).
 
 The web interface reads those files once and keeps them. It sends the gzipped files as they are to
 browsers that accept gzip and unpacks them for any client that does not. For each session it fills
@@ -81,11 +80,10 @@ Format the sources with Prettier before you commit, from `njmule-ui`:
 npm run format
 ```
 
-Use the Node.js Gradle downloaded (`njmule-ui/.gradle/nodejs/node-v…/`, with `npm` inside) or your
-own Node.js 24 or newer. Prettier writes 120 columns, 4 spaces, single quotes and LF line endings.
-The TypeScript configuration is strict, with `noUncheckedIndexedAccess` and no unused locals or
-parameters: `./gradlew :njmule-ui:bundle` reports what `vue-tsc` finds. `npm run api` makes the
-API's types alone, for your editor, after a change of `openapi.yaml`.
+Prettier writes 120 columns, 4 spaces, single quotes and LF line endings. The TypeScript
+configuration is strict, with `noUncheckedIndexedAccess` and no unused locals or parameters:
+`npm run build` reports what `vue-tsc` finds. `npm run api` makes the API's types alone, for your
+editor, after a change of `openapi.yaml`.
 
 ## Talking to the API
 
@@ -136,7 +134,7 @@ and `t('nj.…')` for njMule's own ([Translations](translations.mdx)).
   only those in the JSON files. A key built at run time (`t('nj.mode.' + mode)`) is not found: write
   every key in full somewhere in the sources, as `settings.ts` does in its tables.
 - An unknown key shows itself in brackets, `[nj.some.key]`, so that it is noticed.
-- The texts keep Java's placeholders (`%s`, `%d`, `%.1f`, `%1$s`, `%%`), which `format()` in
+- The texts use standard `%s`, `%d`, `%.1f`, `%1$s`, `%%` placeholders, which `format()` in
   `i18n.ts` fills in.
 - The language is the one chosen in the options, or the best match of the system's or the browser's
   languages among `LANGUAGES` in `i18n.ts`, with English as the fallback of every text. Arabic,
@@ -183,11 +181,11 @@ njMule starts at login and opens the eD2K links; a browser shows those options d
 
 ## Working on the interface
 
-**On example data.** The Rust demo binary that makes this site's pictures serves the interface built
-by Gradle through a web interface of its own, with no network and nothing of your profile:
+**On example data.** The Rust demo binary that makes this site's pictures serves the built
+interface through a web interface of its own, with no network and nothing of your profile:
 
 ```bash
-./gradlew :njmule-ui:compress
+cargo xtask ui-compress
 cargo run --manifest-path njmule-engine/Cargo.toml --example web_capture_demo
 ```
 
@@ -197,11 +195,12 @@ then <kbd>Enter</kbd>). Run both commands again after each change.
 
 **With Vite's development server.** `npm run dev` in `njmule-ui` serves the sources as they are and
 reloads the page as you save. It needs an engine that answers the API with a token, and the
-translations and flags the build makes. Start the demo with the desktop window's control endpoint
-instead of the web interface:
+translations and flags built in `njmule-ui/`. Start the demo with the desktop window's control
+endpoint instead of the web interface:
 
 ```bash
-./gradlew :njmule-ui:translations :njmule-ui:flags
+npm --prefix njmule-ui run translations
+npm --prefix njmule-ui run flags
 cargo run --manifest-path njmule-engine/Cargo.toml --example web_capture_demo -- --control
 ```
 
@@ -225,14 +224,13 @@ $env:NJMULE_API = 'http://127.0.0.1:<port>'; $env:VITE_NJMULE_TOKEN = '<token>';
 </TabItem>
 </Tabs>
 
-Vite passes the page's `/api` calls to the engine. A Gradle task that runs `npm ci` empties
-`node_modules`: stop the development server first.
+Vite passes the page's `/api` calls to the engine.
 
 **With a real engine.** Start the headless engine with a password file and a profile of its own,
 then open `http://localhost:4711/`:
 
 ```bash
-./gradlew :njmule-ui:compress
+cargo xtask ui-compress
 cargo run --manifest-path njmule-engine/Cargo.toml -- --config-dir /home/you/njmule-dev --webui-password-file /home/you/njmule-dev/password.txt
 ```
 

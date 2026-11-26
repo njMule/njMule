@@ -11,10 +11,14 @@
     "scripts": {
         "api": "openapi-typescript ../njmule-engine/assets/openapi.yaml -o build/generated/api.d.ts",
         "build": "npm run api && vue-tsc --noEmit && vite build",
+        "translations": "node scripts/build-assets.mjs translations",
+        "flags": "node scripts/build-assets.mjs flags",
+        "site": "node scripts/build-assets.mjs site",
+        "compress": "node scripts/build-assets.mjs compress",
         "dev": "vite",
         "test": "npm run api && vitest run",
-        "lint": "prettier --check src index.html vite.config.ts",
-        "format": "prettier --write src index.html vite.config.ts"
+        "lint": "prettier --check src scripts index.html vite.config.ts",
+        "format": "prettier --write src scripts index.html vite.config.ts"
     },
     "dependencies": {
         "@tanstack/vue-table": "9.3.1",

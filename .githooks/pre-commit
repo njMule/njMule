@@ -2,11 +2,11 @@
 # SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Rejects commits with unformatted Rust code in the engine or desktop shell.
+# Rejects commits with unformatted Rust code in the engine, desktop shell or xtask.
 # Enable with: git config core.hooksPath .githooks
 root="$(git rev-parse --show-toplevel)" || exit 1
 cd "$root" || exit 1
-for crate in njmule-engine njmule-desktop/src-tauri; do
+for crate in njmule-engine njmule-desktop/src-tauri xtask; do
     if ! cargo fmt --manifest-path "$crate/Cargo.toml" --check; then
         echo "Formatting check failed in $crate: run 'cargo fmt --manifest-path $crate/Cargo.toml' and stage the changes." >&2
         exit 1

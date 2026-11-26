@@ -2,12 +2,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 version: 2
 updates:
-    - package-ecosystem: gradle
-      directory: /
-      schedule:
-          interval: weekly
-      commit-message:
-          prefix: "chore(deps)"
     - package-ecosystem: github-actions
       directory: /
       schedule:
@@ -57,9 +51,15 @@ updates:
               patterns:
                   - "vite"
                   - "vitest"
-    # The Rust engine's crates (njmule-engine/Cargo.lock).
+    # The Rust engine's crates (njmule-engine/Cargo.lock) and Cargo build tasks (xtask/Cargo.lock).
     - package-ecosystem: cargo
       directory: /njmule-engine
+      schedule:
+          interval: weekly
+      commit-message:
+          prefix: "chore(deps)"
+    - package-ecosystem: cargo
+      directory: /xtask
       schedule:
           interval: weekly
       commit-message:

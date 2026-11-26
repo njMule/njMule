@@ -26,14 +26,14 @@ none matches.
 
 ## Where the texts live
 
-All texts are Java properties files in UTF-8, in
+All texts are `.properties` files in UTF-8, in
 [`njmule-ui/i18n/`](https://github.com/njMule/njMule/tree/main/njmule-ui/i18n). Each language has
 two files; `<lang>` is a language code, with the region for the two Portuguese and the two Chinese
 (`pt_BR`, `pt_PT`, `zh_CN`, `zh_TW`):
 
 | File | Keys | What it holds |
 |---|---|---|
-| `emule.properties`, `emule_<lang>.properties` | `IDS_*` | eMule's interface strings and their translations, **generated** from the string tables of eMule's resource scripts by `tools/Rc2Properties.java`. Never edit them by hand: regenerate them |
+| `emule.properties`, `emule_<lang>.properties` | `IDS_*` | eMule's interface strings and their translations, **generated** from the string tables of eMule's resource scripts by `cargo xtask rc2properties`. Never edit them by hand: regenerate them |
 | `nj.properties`, `nj_<lang>.properties` | `nj.*`, and `IDS_*` in translations | njMule's own texts, in English and in each language; a translation may also reword some of eMule's texts in that language |
 
 The files without a suffix are English, which is also the fallback: a text missing in a language
@@ -51,12 +51,12 @@ The English `nj.properties` never holds `IDS_*` keys.
 
 ### Regenerating eMule's texts
 
-`Rc2Properties` reads eMule's resource scripts (the English one, then one per language), keeps the
-`IDS_*` string tables, drops the menu mnemonics (`&O`, and `(&O)` in Chinese, Japanese and Korean)
-and turns C format specifiers into Java ones:
+`cargo xtask rc2properties` reads eMule's resource scripts (the English one, then one per
+language), keeps the `IDS_*` string tables, drops the menu mnemonics (`&O`, and `(&O)` in Chinese,
+Japanese and Korean) and normalises printf format specifiers:
 
 ```bash
-java tools/Rc2Properties.java <english .rc> njmule-ui/i18n <lang>=<translated .rc>...
+cargo xtask rc2properties <english .rc> njmule-ui/i18n <lang>=<translated .rc>...
 ```
 
 It writes `emule.properties` and one `emule_<lang>.properties` per language given, keeping only the
@@ -88,7 +88,8 @@ sources, in quotes: the build keeps only the keys it finds there, so a key built
 
 ## Placeholders
 
-The texts use Java's format specifiers, which `format()` in `njmule-ui/src/i18n.ts` fills in:
+The texts use printf-style positional format specifiers, which `format()` in `njmule-ui/src/i18n.ts`
+fills in:
 
 | Specifier | Meaning |
 |---|---|
@@ -106,8 +107,8 @@ formatted with the interface language's separators.
 A new language needs eMule's translation of its texts, so that `emule_<lang>.properties` exists.
 Then:
 
-1. **Convert** eMule's translation with `Rc2Properties`, adding `<lang>=<translated .rc>` to the
-   command above.
+1. **Convert** eMule's translation with `cargo xtask rc2properties`, adding `<lang>=<translated .rc>`
+   to the command above.
 2. **Translate** `nj.properties` into a new `nj_<lang>.properties`, every key included, with the
    SPDX header of the other files.
 3. **Offer it**: add its tag (`pt-BR` style, with a hyphen) to `LANGUAGES` in

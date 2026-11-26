@@ -86,7 +86,7 @@ in THIRD-PARTY.txt (generated from njmule-engine/Cargo.lock with
 
 Test-only dependencies (proptest, tempfile, x509-parser) and build tools
 (Rust, Cargo, Node.js, Vite, TypeScript, vue-tsc, Vitest, Prettier,
-openapi-typescript, the Tauri command line, Gradle) are not distributed.
+openapi-typescript, the Tauri command line) are not distributed.
 
 
 Shipped server list and Kad contacts

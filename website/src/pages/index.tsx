@@ -618,7 +618,7 @@ const SYSTEMS: {
         key: 'sources',
         name: 'From the sources',
         short: 'Sources',
-        formats: 'Rust · Cargo · Gradle',
+        formats: 'Rust · Cargo · Node.js',
         icon: 'CODE',
         page: '/developer/building',
         link: 'Building njMule',
@@ -626,7 +626,7 @@ const SYSTEMS: {
             title: 'Built, changed and run by you',
             command: `git clone ${REPOSITORY}.git`,
             others: [],
-            facts: ['Rust (rustup)', 'JDK 25 + Gradle Wrapper for the interface and desktop shell'],
+            facts: ['Rust (rustup)', 'Node.js 24 for the interface and desktop shell'],
             shell: 'bash',
             steps: [
                 { text: 'Go into the folder the clone made:', command: 'cd njMule' },

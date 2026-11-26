@@ -26,14 +26,13 @@ Regenerate after editing the master (the desktop window takes its icons from `ge
 `njmule-desktop/src-tauri/tauri.conf.json`):
 
 ```bash
-./gradlew -q iconTools
-java -Djava.awt.headless=true -cp build/tools/jsvg-2.2.0.jar tools/IconGen.java branding/njmule-icon.svg branding/generated
+node tools/render-assets.mjs icons branding/njmule-icon.svg branding/generated
 ```
 
-`IconGen` renders the SVG with [JSVG](https://github.com/weisJ/jsvg) (MIT), a build-time tool only.
+`tools/render-assets.mjs` uses the locally installed Chromium/Edge via `website`'s `playwright-core`.
 
 The social preview is rendered from the 512 px icon:
 
 ```bash
-java -Djava.awt.headless=true tools/SocialPreview.java branding/generated/njmule-512.png branding/generated/njmule-social-preview.png
+node tools/render-assets.mjs social-preview branding/generated/njmule-512.png branding/generated/njmule-social-preview.png
 ```

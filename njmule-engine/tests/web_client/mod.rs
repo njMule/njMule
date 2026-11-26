@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! What the tests of the web interface share: requests sent as raw bytes, as a browser or a caller may send them, the
-//! answers read back, and an interface laid out as Gradle ships it.
+//! answers read back, and an interface laid out as `cargo xtask ui` ships it.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::arithmetic_side_effects)]
 
@@ -132,7 +132,7 @@ pub fn page_token(page: &str) -> String {
     page[start..].split('"').next().unwrap().to_owned()
 }
 
-/// The interface laid out in `dir` as Gradle ships it: its page, a translation and a script compressed, and a flag.
+/// The interface laid out in `dir` as `cargo xtask ui` ships it: its page, a translation and a script compressed, and a flag.
 pub fn web_app(dir: &Path) -> WebApp {
     std::fs::create_dir_all(dir.join("i18n")).unwrap();
     std::fs::create_dir_all(dir.join("flags")).unwrap();

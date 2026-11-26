@@ -24,28 +24,29 @@ interface the engine serves.
 | Desktop window | Tauri 2 in Rust (`njmule-desktop/src-tauri`), with its single-instance, deep-link, dialog, opener, window-state and notification plugins |
 | Web interface | Axum inside `njmule-engine`, embedding the gzipped Vue bundle (`rust-embed`), with a login page, sessions and CSRF tokens |
 | Native executables | Cargo release builds (`lto = "thin"`, `overflow-checks = true`), static musl builds for Synology/Linux, and a small C service host on Windows (`packaging/windows/service.c`) |
-| Build orchestration | Cargo for `njmule-engine` and `njmule-desktop/src-tauri`; Gradle Wrapper for `njmule-ui`, `njmule-desktop`, `website`, `iconTools` and `nativeService` |
+| Build orchestration | Cargo (`njmule-engine`, `njmule-desktop/src-tauri`, and `cargo xtask` for the UI, desktop shell, website, Windows service host and release tools) plus Node.js 24 / npm |
 | Tests | `cargo test` with `proptest`, golden corpora, and black-box flow + wire-transcript tests for the engine; Vitest with happy-dom for the interface; `cargo test` for the desktop shell |
 | Quality gates | `cargo fmt`, Clippy (`-D warnings`, `unsafe_code = "forbid"`), `cargo-deny`, `cargo-llvm-cov`, SonarQube Cloud; Prettier and `vue-tsc` for the interface; REUSE compliance |
 | Packages | WiX 5 (Windows MSI), nfpm (deb and rpm), `codesign` and `hdiutil` (macOS), a shell script for the Synology package, Docker |
 | Documentation | Docusaurus 3.10 with the OpenAPI docs plugin; screenshots captured from a Rust demo binary with Playwright |
 
 Every dependency is pinned in its lock file (`njmule-engine/Cargo.lock`,
-`njmule-desktop/src-tauri/Cargo.lock`, `package-lock.json`, and Gradle's lock files plus
-`gradle/verification-metadata.xml`): see [Dependencies](dependencies.mdx).
+`njmule-desktop/src-tauri/Cargo.lock`, `xtask/Cargo.lock` and `package-lock.json`): see
+[Dependencies](dependencies.mdx).
 
 ## Repository layout
 
 | Path | Content |
 |---|---|
 | `njmule-engine` | the Rust engine, CLI, web interface and remote-control API (`src/`, `assets/`, `tests/`, `examples/web_capture_demo.rs`) |
-| `njmule-ui` | the single interface of the desktop window and of the web interface (Vue 3, TypeScript, Vite), with its translations (`i18n/`) and country flags (`flags/`) |
+| `njmule-ui` | the single interface of the desktop window and of the web interface (Vue 3, TypeScript, Vite), with its translations (`i18n/`), country flags (`flags/`) and asset builder (`scripts/build-assets.mjs`) |
 | `njmule-desktop` | the desktop window: a Tauri 2 shell in Rust (`src-tauri/`) that starts `njmule` and shows `njmule-ui` |
+| `xtask` | Cargo build tasks (`cargo xtask <command>`) for the UI, desktop shell, Windows service host, website and release utilities |
 | `website` | this documentation site (Docusaurus): `docs/` is the user guide, `developer/` this guide |
-| `gradle/` | `libs.versions.toml` (Node.js and JSVG), `verification-metadata.xml` and the Gradle Wrapper |
+| `VERSION` | the single source of the project version |
 | `packaging/` | Windows installer (WiX) and service host (`service.c`), Linux packages (nfpm), macOS bundle metadata, Docker image, Synology package |
 | `branding/` | original artwork: the master SVG and the PNG, ICO and ICNS files made from it |
-| `tools/` | single-file helper programs (icons, flags, translations, update manifest), golden vector generators (`tools/golden/`) and the e2e update server (`tools/e2e-update-server.sh`) |
+| `tools/` | helper scripts (`render-assets.mjs`, `e2e-update-server.sh`) and golden vector generators (`tools/golden/`) |
 | `.github/` | the CI, release and documentation workflows, Dependabot, issue and pull request templates |
 | `LICENSES/` | the texts of every license used in the repository ([REUSE](https://reuse.software)) |
 

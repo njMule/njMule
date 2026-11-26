@@ -14,16 +14,17 @@ Every file type follows `.editorconfig` and `.gitattributes`:
 
 | Rule | Exception |
 |---|---|
-| 4-space indentation, in Rust, TypeScript, Kotlin build scripts, XML, YAML and scripts | tabs in Makefiles only |
+| 4-space indentation, in Rust, TypeScript, XML, YAML and scripts | tabs in Makefiles only |
 | LF line endings, in the repository and in every checkout | `*.cmd` and `*.bat` files use CRLF, which `cmd.exe` needs |
 | UTF-8, a final newline, no trailing whitespace | Markdown keeps trailing whitespace |
-| Rust, TypeScript, Kotlin: at most 120 columns | Markdown is wrapped at about 100 columns |
+| Rust, TypeScript: at most 120 columns | Markdown is wrapped at about 100 columns |
 
-- **Rust (`njmule-engine`, `njmule-desktop/src-tauri`)**: formatted with `cargo fmt` (`rustfmt.toml`,
-  120 columns, 4 spaces) and linted with `cargo clippy --locked --all-targets -- -D warnings`.
+- **Rust (`njmule-engine`, `njmule-desktop/src-tauri`, `xtask`)**: formatted with `cargo fmt`
+  (`rustfmt.toml`, 120 columns, 4 spaces) and linted with
+  `cargo clippy --locked --all-targets -- -D warnings`.
 - **Interface and website (`njmule-ui`, `website`)**: formatted with Prettier (120 columns, 4 spaces,
-  single quotes, LF), checked by `./gradlew :njmule-ui:formatCheck`
-  ([Interface](interface.mdx#formatting-and-types)) and `./gradlew :website:siteCheck`
+  single quotes, LF), checked by `cargo xtask ui`
+  ([Interface](interface.mdx#formatting-and-types)) and `cargo xtask site-check`
   ([Documentation](documentation.mdx#building-the-site)).
 
 ## Rust safety and lints
@@ -116,7 +117,7 @@ Dark, following the system's colour scheme; Primer, Cupertino and Dracula stay s
 
 ## The pre-commit hook
 
-An optional Git hook runs `cargo fmt --check` on both Rust crates before each commit:
+An optional Git hook runs `cargo fmt --check` on all three Rust crates before each commit:
 
 ```bash
 git config core.hooksPath .githooks

@@ -186,7 +186,7 @@ fn should_use_the_launcher_on_windows() {
 #[test]
 fn should_have_none_on_windows_without_the_launcher() {
     let mut t = State::new();
-    let exe: PathBuf = ["C:", "jdk", "java.exe"].iter().collect();
+    let exe: PathBuf = ["C:", "tools", "other.exe"].iter().collect();
     t.given_no_launcher();
 
     t.when_the_command_is_found("Windows 11", Some(&exe));

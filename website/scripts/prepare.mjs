@@ -86,7 +86,7 @@ function printed(file, target, what) {
         writeFileSync(target, '```text\n' + text + '\n```\n');
     } else {
         problem(`no ${what} (${file ?? 'not given'})`);
-        writeFileSync(target, '```text\n' + what + ' (made by ./gradlew :website:site)\n```\n');
+        writeFileSync(target, '```text\n' + what + ' (made by cargo xtask site)\n```\n');
     }
 }
 

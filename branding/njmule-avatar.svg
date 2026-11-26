@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Salvatore Coppola and the njMule contributors -->
 <!-- SPDX-License-Identifier: GPL-3.0-or-later -->
-<!-- njMule avatar: the application icon on a full square, for circular crops (GitHub, forums). tools/IconGen.java renders the subset
-     used here: rect, circle, path with M/L/C/Q/Z, solid fills and round strokes.
+<!-- njMule avatar: the application icon on a full square, for circular crops (GitHub, forums). tools/render-assets.mjs renders the PNG sizes from this SVG.
      Palette: deep blue #24427A, off-white mark #F4F6FB (9.1:1), orange accents #F5A65B (4.9:1). -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
     <rect x="0" y="0" width="1024" height="1024" fill="#24427A"/>

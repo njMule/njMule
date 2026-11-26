@@ -6,11 +6,9 @@
 .claude
 .idea
 .vscode
-**/.gradle
-**/.kotlin
 **/build
+**/target
 **/out
-*.iml
 docs
 .local
 fixtures-private

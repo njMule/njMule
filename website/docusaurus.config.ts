@@ -11,10 +11,10 @@ import screens from './plugins/screens';
 
 const repository = 'https://github.com/njMule/njMule';
 const baseUrl = '/njMule/';
-// The version being documented: the project's, from gradle.properties, its single source.
+// The version being documented: the project's, from VERSION, its single source.
 const version =
-    process.env.NJMULE_VERSION ??
-    /^version=(.+)$/m.exec(readFileSync(new URL('../gradle.properties', import.meta.url), 'utf8'))?.[1]?.trim() ??
+    process.env.NJMULE_VERSION?.trim() ||
+    readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim() ||
     'development';
 
 const config: Config = {
@@ -47,7 +47,7 @@ const config: Config = {
         mermaid: true,
         hooks: { onBrokenMarkdownLinks: 'throw', onBrokenMarkdownImages: 'throw' },
     },
-    // The pictures made by the build (website/build.gradle.kts): screenshots and the brand's images.
+    // The pictures made by the build (`cargo xtask site`): screenshots and the brand's images.
     staticDirectories: ['static', 'build/generated/static'],
     customFields: { version, repository },
 
@@ -192,19 +192,7 @@ const config: Config = {
         prism: {
             theme: prismThemes.github,
             darkTheme: prismThemes.dracula,
-            additionalLanguages: [
-                'bash',
-                'powershell',
-                'ini',
-                'properties',
-                'yaml',
-                'json',
-                'nginx',
-                'rust',
-                'toml',
-                'java',
-                'kotlin',
-            ],
+            additionalLanguages: ['bash', 'powershell', 'ini', 'properties', 'yaml', 'json', 'nginx', 'rust', 'toml'],
         },
         mermaid: { theme: { light: 'neutral', dark: 'dark' } },
         // The code samples of the API reference: the languages a script of njMule is most often written in.
@@ -212,7 +200,6 @@ const config: Config = {
             { language: 'curl' },
             { language: 'python' },
             { language: 'javascript' },
-            { language: 'java' },
             { language: 'powershell' },
             { language: 'go' },
         ],
